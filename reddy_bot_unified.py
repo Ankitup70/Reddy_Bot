@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-👑 REDDY PREMIUM BOT - Render Deploy Ready
+👑 REDDY PREMIUM BOT - POLLING MODE (Working)
 """
 
 import telebot
@@ -11,9 +11,7 @@ import datetime
 import threading
 import time
 import io
-import requests
 import qrcode
-from flask import Flask, request, jsonify
 
 # ============================================================
 # CONFIGURATION
@@ -21,7 +19,6 @@ from flask import Flask, request, jsonify
 BOT_TOKEN = "8646356913:AAHqS40oeDQQPZRik2GYcE0nAjyQfdo5QVo"
 ADMIN_ID = "1648621649"
 
-app = Flask(__name__)
 bot = telebot.TeleBot(BOT_TOKEN)
 pending_orders = {}
 
@@ -41,11 +38,10 @@ PRICES = {
     "kingios": {"day": 199, "week": 699, "month": 2200},
 }
 
-# Database (simple in-memory for Render)
+# Simple database
 db = {
     "users": {},
     "orders": [],
-    "keys": {p: {"day": [], "week": [], "month": []} for p in PRODUCTS}
 }
 
 def save_user_key(user_id, username, product, duration, key):
@@ -183,15 +179,6 @@ def handle(call):
         
         save_user_key(o['user_id'], o['username'], PRODUCTS[o['product']]['name'], o['duration'], key)
         
-        db["orders"].append({
-            "username": o['username'],
-            "product": PRODUCTS[o['product']]['name'],
-            "duration": o['duration'],
-            "amount": o['amount'],
-            "key": key,
-            "date": datetime.datetime.now().strftime("%d %b %Y")
-        })
-        
         bot.send_message(user_cid, f"✅ *KEY DELIVERED!*\n\n📦 {PRODUCTS[o['product']]['name']}\n🔑 `{key}`\n\nThank you for choosing Reddy Premium! 👑", parse_mode="Markdown", reply_markup=main_menu())
         bot.answer_callback_query(call.id, "✅ Approved! Key sent.")
         del pending_orders[order_id]
@@ -243,23 +230,22 @@ def expire_order(order_id, cid):
         except:
             pass
 
-# Flask webhook
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    if request.headers.get('content-type') == 'application/json':
-        json_str = request.get_data().decode('UTF-8')
-        update = telebot.types.Update.de_json(json_str)
-        bot.process_new_updates([update])
-        return '', 200
-    return '', 403
-
-@app.route('/')
-def home():
-    return jsonify({"status": "Bot is running!", "bot": "@ReddyBot"})
-
+# ============================================================
+# MAIN - POLLING MODE (No Webhook Needed)
+# ============================================================
 if __name__ == "__main__":
     print("=" * 50)
-    print("🤖 REDDY PREMIUM BOT")
+    print("🤖 REDDY PREMIUM BOT STARTING...")
     print("=" * 50)
-    # For Render.com - use webhook
-    app.run(host='0.0.0.0', port=8080)
+    print(f"✅ Bot Token: {BOT_TOKEN[:10]}...")
+    print(f"✅ Admin ID: {ADMIN_ID}")
+    print(f"✅ Mode: Polling (No webhook needed)")
+    print("=" * 50)
+    print("🎉 Bot is running! Press Ctrl+C to stop.")
+    print("=" * 50)
+    
+    # Remove any existing webhook
+    bot.remove_webhook()
+    
+    # Start polling
+    bot.infinity_polling(timeout=10, long_polling_timeout=5)
