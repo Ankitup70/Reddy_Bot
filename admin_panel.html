@@ -3,965 +3,353 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>👑 Reddy Premium | Enterprise Admin Suite v4.0</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,100;14..32,300;14..32,400;14..32,500;14..32,600;14..32,700;14..32,800;14..32,900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
-    <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
+    <title>Reddy Admin</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-
-        :root {
-            --bg-primary: #0a0a0f;
-            --bg-secondary: #12121a;
-            --bg-tertiary: #1a1a26;
-            --border: rgba(255, 255, 255, 0.08);
-            --text-primary: #ffffff;
-            --text-secondary: #94a3b8;
-            --text-tertiary: #64748b;
-            --accent: #7c3aed;
-            --accent-light: #a855f7;
-            --accent-gradient: linear-gradient(135deg, #7c3aed, #a855f7);
-            --success: #10b981;
-            --warning: #f59e0b;
-            --danger: #ef4444;
-            --info: #3b82f6;
-            --card-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        [data-theme="light"] {
-            --bg-primary: #f8fafc;
-            --bg-secondary: #ffffff;
-            --bg-tertiary: #f1f5f9;
-            --border: rgba(0, 0, 0, 0.08);
-            --text-primary: #0f172a;
-            --text-secondary: #475569;
-            --text-tertiary: #94a3b8;
-        }
-
         body {
-            font-family: 'Inter', sans-serif;
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            transition: var(--transition);
-            overflow-x: hidden;
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0f;
+            color: #fff;
+            padding: 16px;
         }
-
-        /* Premium Sidebar */
-        .sidebar {
-            width: 280px;
-            background: var(--bg-secondary);
-            backdrop-filter: blur(20px);
-            border-right: 1px solid var(--border);
-            position: fixed;
-            height: 100vh;
-            transition: var(--transition);
-            z-index: 100;
-            overflow-y: auto;
+        .login-card {
+            background: #12121a;
+            padding: 30px 20px;
+            border-radius: 20px;
+            text-align: center;
+            max-width: 350px;
+            margin: 80px auto;
         }
-
-        .sidebar-header {
-            padding: 24px 20px;
-            border-bottom: 1px solid var(--border);
-            margin-bottom: 20px;
-        }
-
-        .logo {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .logo-icon {
-            width: 40px;
-            height: 40px;
-            background: var(--accent-gradient);
+        input {
+            width: 100%;
+            padding: 14px;
+            background: #1a1a26;
+            border: 1px solid #2a2a3d;
             border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-        }
-
-        .logo-text h2 {
-            font-size: 18px;
-            font-weight: 700;
-            background: var(--accent-gradient);
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
-        }
-
-        .logo-text p {
-            font-size: 10px;
-            color: var(--text-tertiary);
-        }
-
-        .nav-item {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            padding: 12px 20px;
-            margin: 4px 12px;
-            border-radius: 12px;
-            cursor: pointer;
-            transition: var(--transition);
-            color: var(--text-secondary);
-            font-size: 14px;
-            font-weight: 500;
-        }
-
-        .nav-item i {
-            width: 22px;
+            color: #fff;
+            margin: 12px 0;
             font-size: 16px;
         }
-
-        .nav-item:hover {
-            background: var(--bg-tertiary);
-            color: var(--text-primary);
-            transform: translateX(5px);
-        }
-
-        .nav-item.active {
-            background: var(--accent-gradient);
-            color: white;
-            box-shadow: 0 4px 15px rgba(124, 58, 237, 0.3);
-        }
-
-        /* Main Content */
-        .main-content {
-            margin-left: 280px;
-            padding: 24px 32px;
-        }
-
-        /* Header */
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 28px;
-            flex-wrap: wrap;
-            gap: 15px;
-        }
-
-        .page-title h1 {
-            font-size: 28px;
-            font-weight: 700;
-            background: var(--accent-gradient);
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
-        }
-
-        .page-title p {
-            font-size: 13px;
-            color: var(--text-secondary);
-            margin-top: 4px;
-        }
-
-        .header-actions {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            flex-wrap: wrap;
-        }
-
-        .theme-toggle {
-            width: 40px;
-            height: 40px;
-            background: var(--bg-tertiary);
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: var(--transition);
-        }
-
-        .admin-badge {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            background: var(--bg-tertiary);
-            padding: 8px 16px;
-            border-radius: 12px;
-        }
-
-        .admin-avatar {
-            width: 36px;
-            height: 36px;
-            background: var(--accent-gradient);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .logout-btn {
-            background: rgba(239, 68, 68, 0.15);
-            border: 1px solid rgba(239, 68, 68, 0.3);
-            padding: 8px 20px;
-            border-radius: 10px;
-            color: var(--danger);
-            cursor: pointer;
-            transition: var(--transition);
-        }
-
-        /* Stats Grid */
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-            gap: 20px;
-            margin-bottom: 28px;
-        }
-
-        .stat-card {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-            border-radius: 20px;
-            padding: 20px;
-            transition: var(--transition);
-            position: relative;
-            overflow: hidden;
-        }
-
-        .stat-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            right: 0;
-            width: 100px;
-            height: 100px;
-            background: radial-gradient(circle, rgba(124, 58, 237, 0.1), transparent);
-            border-radius: 50%;
-        }
-
-        .stat-card:hover {
-            transform: translateY(-5px);
-            box-shadow: var(--card-shadow);
-        }
-
-        .stat-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-        }
-
-        .stat-icon {
-            width: 48px;
-            height: 48px;
-            background: rgba(124, 58, 237, 0.1);
-            border-radius: 14px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-        }
-
-        .stat-value {
-            font-size: 32px;
-            font-weight: 800;
-            margin-bottom: 5px;
-        }
-
-        .stat-label {
-            font-size: 13px;
-            color: var(--text-secondary);
-        }
-
-        .stat-change {
-            font-size: 12px;
-            margin-top: 10px;
-        }
-
-        .stat-change.positive { color: var(--success); }
-        .stat-change.negative { color: var(--danger); }
-
-        /* Cards */
-        .card {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-            border-radius: 20px;
-            padding: 24px;
-            margin-bottom: 24px;
-            transition: var(--transition);
-        }
-
-        .card-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
-            gap: 15px;
-        }
-
-        .card-title {
-            font-size: 18px;
-            font-weight: 700;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .card-title i {
-            color: var(--accent-light);
-        }
-
-        /* Forms */
-        input, select, textarea {
-            width: 100%;
-            padding: 12px 16px;
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            color: var(--text-primary);
-            font-size: 14px;
-            transition: var(--transition);
-        }
-
-        input:focus, select:focus, textarea:focus {
-            outline: none;
-            border-color: var(--accent);
-            box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1);
-        }
-
         button {
-            padding: 10px 20px;
-            border-radius: 10px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: var(--transition);
+            background: #7c3aed;
+            color: white;
             border: none;
-            font-size: 14px;
-        }
-
-        .btn-primary {
-            background: var(--accent-gradient);
-            color: white;
-        }
-
-        .btn-success {
-            background: var(--success);
-            color: white;
-        }
-
-        .btn-danger {
-            background: var(--danger);
-            color: white;
-        }
-
-        .btn-warning {
-            background: var(--warning);
-            color: white;
-        }
-
-        .btn-outline {
-            background: transparent;
-            border: 1px solid var(--border);
-            color: var(--text-primary);
-        }
-
-        /* Tables */
-        .data-table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        .data-table th {
-            text-align: left;
-            padding: 14px;
-            color: var(--text-secondary);
-            font-weight: 600;
-            font-size: 12px;
-            border-bottom: 1px solid var(--border);
-        }
-
-        .data-table td {
-            padding: 14px;
-            border-bottom: 1px solid var(--border);
-            font-size: 13px;
-        }
-
-        .data-table tr:hover td {
-            background: var(--bg-tertiary);
-        }
-
-        /* Search Bar */
-        .search-bar {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            background: var(--bg-tertiary);
-            padding: 8px 16px;
+            padding: 14px 20px;
             border-radius: 12px;
-            border: 1px solid var(--border);
+            font-weight: 600;
+            width: 100%;
+            font-size: 16px;
+            cursor: pointer;
         }
-
-        .search-bar i {
-            color: var(--text-tertiary);
-        }
-
-        .search-bar input {
-            border: none;
-            padding: 0;
-            background: none;
-            width: 200px;
-        }
-
-        /* Tabs */
-        .tabs {
+        .sidebar {
             display: flex;
+            flex-wrap: wrap;
             gap: 8px;
             margin-bottom: 20px;
-            flex-wrap: wrap;
+            background: #12121a;
+            padding: 12px;
+            border-radius: 20px;
         }
-
-        .tab {
-            padding: 8px 20px;
-            background: var(--bg-tertiary);
+        .nav-btn {
+            background: #1a1a26;
+            border: none;
+            padding: 10px 16px;
             border-radius: 30px;
-            cursor: pointer;
-            transition: var(--transition);
+            color: #94a3b8;
             font-size: 13px;
+            flex: 1;
+            min-width: 70px;
         }
-
-        .tab.active {
-            background: var(--accent-gradient);
+        .nav-btn.active {
+            background: #7c3aed;
             color: white;
         }
-
-        /* Modal */
-        .modal {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.8);
-            backdrop-filter: blur(10px);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
+        .card {
+            background: #12121a;
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 16px;
         }
-
-        .modal-content {
-            background: var(--bg-secondary);
-            padding: 30px;
-            border-radius: 24px;
-            width: 500px;
-            max-width: 90%;
-            max-height: 80vh;
-            overflow-y: auto;
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-bottom: 16px;
         }
-
-        /* Toast Notification */
-        .toast-notification {
-            position: fixed;
-            bottom: 30px;
-            right: 30px;
-            background: var(--bg-secondary);
-            border-left: 4px solid var(--success);
-            padding: 15px 25px;
-            border-radius: 12px;
-            z-index: 1000;
-            animation: slideIn 0.3s ease;
-            box-shadow: var(--card-shadow);
-        }
-
-        @keyframes slideIn {
-            from { transform: translateX(100%); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
-        }
-
-        /* Login */
-        .login-container {
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: linear-gradient(135deg, #0a0a0f, #1a1535);
-        }
-
-        .login-card {
-            background: var(--bg-secondary);
-            padding: 50px;
-            border-radius: 30px;
+        .stat-card {
+            background: #1a1a26;
+            padding: 16px;
+            border-radius: 16px;
             text-align: center;
-            width: 400px;
-            border: 1px solid var(--border);
         }
-
-        /* Loading */
-        .loading {
+        .stat-value {
+            font-size: 28px;
+            font-weight: 700;
+            color: #fbbf24;
+        }
+        .stat-label {
+            font-size: 11px;
+            color: #94a3b8;
+            margin-top: 5px;
+        }
+        .product-tabs {
             display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        .ptab {
+            background: #1a1a26;
+            padding: 8px 16px;
+            border-radius: 30px;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .ptab.active {
+            background: #7c3aed;
+        }
+        .dur-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        .dtab {
+            padding: 8px 20px;
+            border-radius: 30px;
+            font-size: 13px;
+            cursor: pointer;
+            flex: 1;
+            text-align: center;
+        }
+        .dtab.day { background: #10b98120; border: 1px solid #10b981; color: #10b981; }
+        .dtab.week { background: #f59e0b20; border: 1px solid #f59e0b; color: #f59e0b; }
+        .dtab.month { background: #ef444420; border: 1px solid #ef4444; color: #ef4444; }
+        .dtab.active { box-shadow: 0 0 10px currentColor; }
+        textarea {
+            width: 100%;
+            padding: 12px;
+            background: #1a1a26;
+            border: 1px solid #2a2a3d;
+            border-radius: 12px;
+            color: #fff;
+            margin: 12px 0;
+            font-size: 13px;
+        }
+        .key-item {
+            background: #1a1a26;
+            padding: 12px;
+            border-radius: 12px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
             align-items: center;
-            justify-content: center;
+        }
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 12px;
+            width: auto;
+        }
+        .btn-primary { background: #7c3aed; }
+        .btn-success { background: #10b981; }
+        .btn-danger { background: #ef4444; }
+        .btn-warning { background: #f59e0b; }
+        .hidden { display: none; }
+        .loading {
+            text-align: center;
             padding: 40px;
         }
-
         .spinner {
             width: 40px;
             height: 40px;
-            border: 3px solid var(--border);
-            border-top-color: var(--accent);
+            border: 3px solid #2a2a3d;
+            border-top-color: #7c3aed;
             border-radius: 50%;
             animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
         }
-
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
-
-        .hidden { display: none; }
-
-        /* Responsive */
-        @media (max-width: 768px) {
-            .sidebar {
-                transform: translateX(-100%);
-                position: fixed;
-                z-index: 200;
-            }
-            .sidebar.open {
-                transform: translateX(0);
-            }
-            .main-content {
-                margin-left: 0;
-                padding: 16px;
-            }
-            .stats-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
-        }
-
-        /* Scrollbar */
-        ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
-        }
-        ::-webkit-scrollbar-track {
-            background: var(--bg-tertiary);
-        }
-        ::-webkit-scrollbar-thumb {
-            background: var(--accent);
-            border-radius: 10px;
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            background: #1a1a26;
+            padding: 12px 16px;
+            border-radius: 12px;
+            text-align: center;
+            z-index: 1000;
+            border-left: 3px solid #10b981;
         }
     </style>
 </head>
 <body>
 
-<div id="loginContainer" class="login-container">
+<div id="loginDiv" style="text-align: center; padding: 40px 20px;">
     <div class="login-card">
-        <div class="logo-icon" style="margin: 0 auto 20px; width: 60px; height: 60px;">
-            <i class="fas fa-crown" style="font-size: 32px;"></i>
-        </div>
-        <h2 style="margin-bottom: 10px;">Reddy Premium</h2>
-        <p style="color: var(--text-secondary); margin-bottom: 30px;">Enterprise Admin Suite</p>
-        <input type="password" id="loginPassword" placeholder="Enter Password" style="margin-bottom: 20px;">
-        <button class="btn-primary" onclick="login()" style="width: 100%; padding: 14px;">🔓 Login to Dashboard</button>
+        <h2>👑 Reddy Admin</h2>
+        <input type="password" id="password" placeholder="Enter Password">
+        <button onclick="login()">Login</button>
     </div>
 </div>
 
-<div id="appContainer" class="hidden">
+<div id="appDiv" class="hidden">
     <div class="sidebar" id="sidebar">
-        <div class="sidebar-header">
-            <div class="logo">
-                <div class="logo-icon"><i class="fas fa-crown"></i></div>
-                <div class="logo-text">
-                    <h2>REDDY PREMIUM</h2>
-                    <p>Enterprise Suite v4.0</p>
-                </div>
-            </div>
-        </div>
-
-        <div class="nav-item active" onclick="showPage('dashboard')">
-            <i class="fas fa-chart-line"></i>
-            <span>Dashboard</span>
-        </div>
-        <div class="nav-item" onclick="showPage('keys')">
-            <i class="fas fa-key"></i>
-            <span>Key Manager</span>
-        </div>
-        <div class="nav-item" onclick="showPage('products')">
-            <i class="fas fa-boxes"></i>
-            <span>Products</span>
-        </div>
-        <div class="nav-item" onclick="showPage('admins')">
-            <i class="fas fa-user-shield"></i>
-            <span>Sub Admins</span>
-        </div>
-        <div class="nav-item" onclick="showPage('customers')">
-            <i class="fas fa-users"></i>
-            <span>Customers</span>
-        </div>
-        <div class="nav-item" onclick="showPage('orders')">
-            <i class="fas fa-shopping-cart"></i>
-            <span>Orders</span>
-        </div>
-        <div class="nav-item" onclick="showPage('analytics')">
-            <i class="fas fa-chart-pie"></i>
-            <span>Analytics</span>
-        </div>
-        <div class="nav-item" onclick="showPage('settings')">
-            <i class="fas fa-cog"></i>
-            <span>Settings</span>
-        </div>
-
-        <div style="position: absolute; bottom: 20px; width: calc(100% - 40px); margin: 0 20px;">
-            <div class="nav-item" onclick="logout()" style="color: var(--danger);">
-                <i class="fas fa-sign-out-alt"></i>
-                <span>Logout</span>
-            </div>
-        </div>
+        <button class="nav-btn active" onclick="showPage('dashboard')">📊</button>
+        <button class="nav-btn" onclick="showPage('keys')">🔑</button>
+        <button class="nav-btn" onclick="showPage('products')">📦</button>
+        <button class="nav-btn" onclick="showPage('orders')">🛒</button>
+        <button class="nav-btn" onclick="showPage('users')">👥</button>
+        <button class="nav-btn" onclick="logout()" style="color:#ef4444">🚪</button>
     </div>
-
-    <div class="main-content">
-        <div class="header">
-            <div class="page-title">
-                <h1 id="pageTitle">Dashboard</h1>
-                <p id="pageSubtitle">Welcome back, Super Admin</p>
-            </div>
-            <div class="header-actions">
-                <div class="search-bar">
-                    <i class="fas fa-search"></i>
-                    <input type="text" id="globalSearch" placeholder="Search anything..." onkeyup="globalSearch()">
-                </div>
-                <div class="theme-toggle" onclick="toggleTheme()">
-                    <i class="fas fa-moon"></i>
-                </div>
-                <div class="admin-badge">
-                    <div class="admin-avatar">
-                        <i class="fas fa-crown" style="font-size: 14px;"></i>
-                    </div>
-                    <div>
-                        <div style="font-size: 13px; font-weight: 600;" id="adminName">Super Admin</div>
-                        <div style="font-size: 10px; color: var(--text-tertiary);" id="adminRole">Full Access</div>
-                    </div>
-                </div>
-                <button class="logout-btn" onclick="logout()"><i class="fas fa-sign-out-alt"></i> Logout</button>
-            </div>
-        </div>
-        <div id="contentArea">
-            <div class="loading"><div class="spinner"></div></div>
-        </div>
-    </div>
+    <div id="content"></div>
 </div>
 
-<div id="toast" class="toast-notification hidden"></div>
+<div id="toast" class="toast hidden"></div>
 
 <script>
-// ============================================================
-// GLOBAL VARIABLES
-// ============================================================
-let authToken = '';
-let currentTheme = 'dark';
-let charts = {};
-let allData = {
-    products: {},
-    keys: {},
-    orders: [],
-    users: {},
-    admins: []
-};
+let token = '';
+let products = {};
+let keysData = {};
+let orders = [];
+let users = {};
 
-// ============================================================
-// THEME MANAGEMENT
-// ============================================================
-function toggleTheme() {
-    currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', currentTheme);
-    localStorage.setItem('theme', currentTheme);
-    showToast(`🌓 ${currentTheme === 'dark' ? 'Dark' : 'Light'} mode activated`, 'info');
-}
-
-// ============================================================
-// AUTHENTICATION
-// ============================================================
 async function login() {
-    const password = document.getElementById('loginPassword').value;
-    
-    if (password === 'reddy2024') {
-        authToken = password;
-        document.getElementById('loginContainer').classList.add('hidden');
-        document.getElementById('appContainer').classList.remove('hidden');
+    let pwd = document.getElementById('password').value;
+    if (pwd === 'reddy2024') {
+        token = pwd;
+        document.getElementById('loginDiv').classList.add('hidden');
+        document.getElementById('appDiv').classList.remove('hidden');
         await loadAllData();
         showPage('dashboard');
-        showToast('✅ Welcome back, Super Admin!', 'success');
+        showToast('✅ Login successful!');
     } else {
         showToast('❌ Wrong password!', 'error');
     }
 }
 
 function logout() {
-    authToken = '';
-    document.getElementById('loginContainer').classList.remove('hidden');
-    document.getElementById('appContainer').classList.add('hidden');
-    document.getElementById('loginPassword').value = '';
-}
-
-// ============================================================
-// API CALLS
-// ============================================================
-async function apiCall(endpoint, method = 'GET', body = null) {
-    const options = { method, headers: { 'Content-Type': 'application/json' } };
-    if (body) options.body = JSON.stringify(body);
-    const response = await fetch('/api' + endpoint, options);
-    if (!response.ok) throw new Error('API call failed');
-    return response.json();
+    token = '';
+    document.getElementById('loginDiv').classList.remove('hidden');
+    document.getElementById('appDiv').classList.add('hidden');
+    document.getElementById('password').value = '';
 }
 
 async function loadAllData() {
+    showLoading(true);
     try {
-        allData.prices = await apiCall('/prices');
-        allData.keys = await apiCall('/keys/all');
-        allData.orders = await apiCall('/orders');
-        allData.users = await apiCall('/users');
-        
-        for (let p in allData.prices) {
-            allData.products[p] = {
-                name: p.charAt(0).toUpperCase() + p.slice(1),
-                prices: allData.prices[p],
-                keys: allData.keys[p] || { day: [], week: [], month: [] }
-            };
-        }
+        const [pricesRes, keysRes, ordersRes, usersRes] = await Promise.all([
+            fetch('/api/prices').then(r => r.json()),
+            fetch('/api/keys/all').then(r => r.json()),
+            fetch('/api/orders').then(r => r.json()),
+            fetch('/api/users').then(r => r.json())
+        ]);
+        products = pricesRes;
+        keysData = keysRes;
+        orders = ordersRes;
+        users = usersRes;
     } catch(e) {
-        console.log('Using local data');
+        console.log('Error loading data');
+    }
+    showLoading(false);
+}
+
+function showLoading(show) {
+    if (show) {
+        document.getElementById('content').innerHTML = '<div class="loading"><div class="spinner"></div><div>Loading...</div></div>';
     }
 }
 
-function showToast(message, type = 'info') {
+function showToast(msg, type = 'success') {
     const toast = document.getElementById('toast');
-    toast.innerHTML = `<i class="fas ${type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle'}"></i> ${message}`;
-    toast.style.borderLeftColor = type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#3b82f6';
+    toast.innerHTML = msg;
+    toast.style.borderLeftColor = type === 'error' ? '#ef4444' : '#10b981';
     toast.classList.remove('hidden');
-    setTimeout(() => toast.classList.add('hidden'), 3000);
+    setTimeout(() => toast.classList.add('hidden'), 2500);
 }
 
-function globalSearch() {
-    const searchTerm = document.getElementById('globalSearch').value.toLowerCase();
-    if (!searchTerm) return;
+async function showPage(page) {
+    document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
     
-    let results = [];
-    
-    // Search in products
-    for (let p in allData.products) {
-        if (p.toLowerCase().includes(searchTerm)) {
-            results.push({ type: 'Product', name: p, details: allData.products[p] });
-        }
-    }
-    
-    // Search in orders
-    allData.orders.forEach(o => {
-        if (o.username?.toLowerCase().includes(searchTerm) || o.product?.toLowerCase().includes(searchTerm)) {
-            results.push({ type: 'Order', name: o.product, details: o });
-        }
-    });
-    
-    // Search in users
-    for (let [id, u] of Object.entries(allData.users)) {
-        if (u.username?.toLowerCase().includes(searchTerm) || id.includes(searchTerm)) {
-            results.push({ type: 'Customer', name: u.username, details: u });
-        }
-    }
-    
-    if (results.length > 0) {
-        showToast(`🔍 Found ${results.length} results for "${searchTerm}"`, 'info');
-    }
+    if (page === 'dashboard') await loadDashboard();
+    else if (page === 'keys') await loadKeysUI();
+    else if (page === 'products') await loadProductsUI();
+    else if (page === 'orders') await loadOrdersUI();
+    else if (page === 'users') await loadUsersUI();
 }
 
-// ============================================================
-// PAGE NAVIGATION
-// ============================================================
-function showPage(page) {
-    document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
-    event.target.closest('.nav-item').classList.add('active');
-    
-    const titles = {
-        dashboard: 'Dashboard', keys: 'Key Manager', products: 'Product Manager',
-        admins: 'Sub Admin Management', customers: 'Customer Directory',
-        orders: 'Order History', analytics: 'Analytics & Reports', settings: 'System Settings'
-    };
-    
-    document.getElementById('pageTitle').innerHTML = titles[page];
-    
-    if (page === 'dashboard') loadDashboard();
-    else if (page === 'keys') loadKeysUI();
-    else if (page === 'products') loadProductsUI();
-    else if (page === 'admins') loadAdminsUI();
-    else if (page === 'customers') loadCustomersUI();
-    else if (page === 'orders') loadOrdersUI();
-    else if (page === 'analytics') loadAnalyticsUI();
-    else if (page === 'settings') loadSettingsUI();
-}
-
-// ============================================================
-// DASHBOARD
-// ============================================================
 async function loadDashboard() {
-    let totalKeys = 0, totalRevenue = 0;
-    for (let p in allData.keys) {
-        totalKeys += (allData.keys[p].day?.length || 0) + (allData.keys[p].week?.length || 0) + (allData.keys[p].month?.length || 0);
+    let totalKeys = 0;
+    for (let p in keysData) {
+        totalKeys += (keysData[p]?.day?.length || 0) + (keysData[p]?.week?.length || 0) + (keysData[p]?.month?.length || 0);
     }
-    allData.orders.forEach(o => totalRevenue += o.amount || 0);
+    let totalRevenue = orders.reduce((sum, o) => sum + (o.amount || 0), 0);
+    let userCount = Object.keys(users).length;
     
-    const todayOrders = allData.orders.filter(o => {
-        if (!o.date) return false;
-        return o.date.includes(new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' }));
-    }).length;
-    
-    document.getElementById('contentArea').innerHTML = `
+    document.getElementById('content').innerHTML = `
         <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-header"><div class="stat-icon"><i class="fas fa-key"></i></div></div>
-                <div class="stat-value">${totalKeys.toLocaleString()}</div>
-                <div class="stat-label">Total Keys in Stock</div>
-                <div class="stat-change positive"><i class="fas fa-arrow-up"></i> +12% from last week</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-header"><div class="stat-icon"><i class="fas fa-shopping-cart"></i></div></div>
-                <div class="stat-value">${allData.orders.length.toLocaleString()}</div>
-                <div class="stat-label">Total Orders</div>
-                <div class="stat-change positive"><i class="fas fa-arrow-up"></i> +${todayOrders} today</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-header"><div class="stat-icon"><i class="fas fa-users"></i></div></div>
-                <div class="stat-value">${Object.keys(allData.users).length.toLocaleString()}</div>
-                <div class="stat-label">Total Customers</div>
-                <div class="stat-change positive"><i class="fas fa-arrow-up"></i> +8 new this week</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-header"><div class="stat-icon"><i class="fas fa-rupee-sign"></i></div></div>
-                <div class="stat-value">₹${totalRevenue.toLocaleString()}</div>
-                <div class="stat-label">Total Revenue</div>
-                <div class="stat-change positive"><i class="fas fa-arrow-up"></i> +23% growth</div>
-            </div>
+            <div class="stat-card"><div class="stat-value">${totalKeys}</div><div class="stat-label">Keys</div></div>
+            <div class="stat-card"><div class="stat-value">${orders.length}</div><div class="stat-label">Orders</div></div>
+            <div class="stat-card"><div class="stat-value">${userCount}</div><div class="stat-label">Users</div></div>
+            <div class="stat-card"><div class="stat-value">₹${totalRevenue}</div><div class="stat-label">Revenue</div></div>
         </div>
         <div class="card">
-            <div class="card-header">
-                <div class="card-title"><i class="fas fa-chart-line"></i> Revenue Trend</div>
-                <div class="tabs">
-                    <div class="tab active" onclick="updateChart('week')">Weekly</div>
-                    <div class="tab" onclick="updateChart('month')">Monthly</div>
-                    <div class="tab" onclick="updateChart('year')">Yearly</div>
-                </div>
-            </div>
-            <canvas id="revenueChart" style="max-height: 300px;"></canvas>
-        </div>
-        <div class="stats-grid">
-            <div class="card">
-                <div class="card-title"><i class="fas fa-trophy"></i> Top Selling Products</div>
-                <div id="topProducts"></div>
-            </div>
-            <div class="card">
-                <div class="card-title"><i class="fas fa-clock"></i> Recent Orders</div>
-                <div id="recentOrders"></div>
-            </div>
+            <h3 style="margin-bottom: 12px;">📊 Stock Overview</h3>
+            <div id="stockList"></div>
         </div>
     `;
     
-    // Revenue Chart
-    const ctx = document.getElementById('revenueChart').getContext('2d');
-    charts.revenue = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-            datasets: [{
-                label: 'Revenue (₹)',
-                data: [12500, 18900, 15200, 21000, 27800, 32400, 29800],
-                borderColor: '#7c3aed',
-                backgroundColor: 'rgba(124, 58, 237, 0.1)',
-                tension: 0.4,
-                fill: true
-            }]
-        },
-        options: { responsive: true, maintainAspectRatio: true }
-    });
-    
-    // Top Products
-    let productSales = {};
-    allData.orders.forEach(o => { productSales[o.product] = (productSales[o.product] || 0) + 1; });
-    let topHtml = '';
-    Object.entries(productSales).slice(0, 5).forEach(([p, count]) => {
-        topHtml += `<div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border);">
-            <span>${p}</span><span style="color: var(--success); font-weight: 600;">${count} sales</span>
+    let stockHtml = '';
+    for (let p in keysData) {
+        stockHtml += `<div style="margin-bottom: 12px;">
+            <b>${p}</b> 🟢${keysData[p]?.day?.length || 0} 🟡${keysData[p]?.week?.length || 0} 🔴${keysData[p]?.month?.length || 0}
         </div>`;
-    });
-    document.getElementById('topProducts').innerHTML = topHtml || '<div>No sales yet</div>';
-    
-    // Recent Orders
-    let recentHtml = '';
-    allData.orders.slice(0, 5).forEach(o => {
-        recentHtml += `<div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border);">
-            <span>@${o.username || '-'}</span><span>${o.product || '-'}</span><span style="color: var(--success);">₹${o.amount || 0}</span>
-        </div>`;
-    });
-    document.getElementById('recentOrders').innerHTML = recentHtml || '<div>No orders yet</div>';
+    }
+    document.getElementById('stockList').innerHTML = stockHtml;
 }
 
-function updateChart(period) {
-    // Update chart based on period
-    showToast(`📊 Showing ${period}ly data`, 'info');
-}
-
-// ============================================================
-// KEY MANAGER
-// ============================================================
+// ==================== KEYS MANAGER ====================
 let currentProduct = 'deadeye';
-let currentDuration = 'day';
+let currentDur = 'day';
 const productList = ['deadeye', 'vision', 'rage', 'winios', 'kingios'];
-const productNames = { deadeye: 'Deadeye', vision: 'Vision', rage: 'Rage', winios: 'Winios', kingios: 'Kingios' };
-const prefixes = { deadeye: 'DEAD', vision: 'VIS', rage: 'RAGE', winios: 'WIN', kingios: 'KING' };
+const productNames = { deadeye:'Deadeye', vision:'Vision', rage:'Rage', winios:'Winios', kingios:'Kingios' };
+const prefixes = { deadeye:'DEAD', vision:'VIS', rage:'RAGE', winios:'WIN', kingios:'KING' };
 
-function loadKeysUI() {
-    document.getElementById('contentArea').innerHTML = `
+async function loadKeysUI() {
+    document.getElementById('content').innerHTML = `
         <div class="card">
-            <div class="card-header">
-                <div class="card-title"><i class="fas fa-plus-circle"></i> Add New Keys</div>
+            <div class="product-tabs" id="productTabs"></div>
+            <div class="dur-tabs">
+                <div class="dtab day" onclick="setDur('day',this)">🟢 Day</div>
+                <div class="dtab week" onclick="setDur('week',this)">🟡 Week</div>
+                <div class="dtab month" onclick="setDur('month',this)">🔴 Month</div>
             </div>
-            <div class="tabs" id="productTabs"></div>
-            <div class="tabs">
-                <div class="tab ${currentDuration === 'day' ? 'active' : ''}" onclick="setDuration('day')">🟢 Day</div>
-                <div class="tab ${currentDuration === 'week' ? 'active' : ''}" onclick="setDuration('week')">🟡 Week</div>
-                <div class="tab ${currentDuration === 'month' ? 'active' : ''}" onclick="setDuration('month')">🔴 Month</div>
+            <textarea id="keysInput" rows="3" placeholder="Enter keys (one per line)"></textarea>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <button class="btn-primary" onclick="addKeys()">➕ Add</button>
+                <button class="btn-success" onclick="genKeys()">🎲 Generate 10</button>
+                <button class="btn-danger" onclick="clearPool()">🗑️ Clear</button>
             </div>
-            <textarea id="keysInput" rows="5" placeholder="Enter keys (one per line)&#10;Example:&#10;${prefixes[currentProduct]}-ABCD-1234-EFGH" style="resize: vertical; margin-bottom: 15px;"></textarea>
-            <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-                <button class="btn-primary" onclick="addKeys()"><i class="fas fa-plus"></i> Add Keys</button>
-                <button class="btn-success" onclick="generateKeys()"><i class="fas fa-magic"></i> Generate 10 Keys</button>
-                <button class="btn-danger" onclick="clearPool()"><i class="fas fa-trash"></i> Clear Pool</button>
-                <button class="btn-outline" onclick="exportKeys()"><i class="fas fa-download"></i> Export Keys</button>
-            </div>
-        </div>
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title"><i class="fas fa-list"></i> Available Keys (<span id="keyCount">0</span>)</div>
-                <div class="search-bar" style="width: auto;">
-                    <i class="fas fa-search"></i>
-                    <input type="text" id="keySearch" placeholder="Search keys..." onkeyup="filterKeys()" style="width: 150px;">
-                </div>
-            </div>
-            <div id="keysList" class="keys-list" style="max-height: 400px; overflow-y: auto;"></div>
-            <div style="margin-top: 15px; text-align: center;">
-                <button class="btn-outline" onclick="copyAllKeys()"><i class="fas fa-copy"></i> Copy All Keys</button>
+            <div style="margin-top: 16px;">
+                <h4>Available Keys (<span id="keyCount">0</span>)</h4>
+                <div id="keysList"></div>
             </div>
         </div>
     `;
     renderProductTabs();
-    refreshKeysList();
+    await refreshKeysList();
 }
 
 function renderProductTabs() {
     let html = '';
     for (let p of productList) {
-        html += `<div class="tab ${p === currentProduct ? 'active' : ''}" onclick="setProduct('${p}')">${productNames[p]}</div>`;
+        html += `<div class="ptab ${p === currentProduct ? 'active' : ''}" onclick="setProduct('${p}')">${productNames[p]}</div>`;
     }
     document.getElementById('productTabs').innerHTML = html;
 }
@@ -970,616 +358,197 @@ function setProduct(p) {
     currentProduct = p;
     renderProductTabs();
     refreshKeysList();
-    document.getElementById('keysInput').placeholder = `Enter keys (one per line)\nExample:\n${prefixes[p]}-ABCD-1234-EFGH`;
 }
 
-function setDuration(d) {
-    currentDuration = d;
-    document.querySelectorAll('#contentArea .tabs .tab').forEach(t => t.classList.remove('active'));
-    event.target.classList.add('active');
+function setDur(d, el) {
+    currentDur = d;
+    document.querySelectorAll('.dtab').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
     refreshKeysList();
 }
 
 async function refreshKeysList() {
-    const data = await apiCall(`/keys/${currentProduct}/${currentDuration}`);
-    const keysList = data.keys || [];
-    document.getElementById('keyCount').innerHTML = keysList.length;
-    
-    if (keysList.length === 0) {
-        document.getElementById('keysList').innerHTML = '<div style="text-align: center; padding: 40px;"><i class="fas fa-key" style="font-size: 48px; opacity: 0.3;"></i><p style="margin-top: 10px;">No keys in this pool</p></div>';
-        return;
+    try {
+        const res = await fetch(`/api/keys/${currentProduct}/${currentDur}`);
+        const data = await res.json();
+        const keyList = data.keys || [];
+        document.getElementById('keyCount').innerHTML = keyList.length;
+        if (keyList.length === 0) {
+            document.getElementById('keysList').innerHTML = '<div style="text-align:center;padding:20px;color:#64748b;">No keys</div>';
+            return;
+        }
+        let html = '';
+        for (let i = 0; i < keyList.length; i++) {
+            html += `<div class="key-item"><code>${keyList[i]}</code><button class="btn-sm btn-danger" onclick="deleteKey(${i})">Del</button></div>`;
+        }
+        document.getElementById('keysList').innerHTML = html;
+    } catch(e) {
+        showToast('Error loading keys');
     }
-    
-    let html = '';
-    for (let i = 0; i < keysList.length; i++) {
-        html += `
-            <div class="key-item" style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: var(--bg-tertiary); border-radius: 12px; margin-bottom: 8px;">
-                <div><i class="fas fa-key" style="color: var(--success);"></i> <code>${keysList[i]}</code></div>
-                <button class="btn-danger" onclick="deleteKey(${i})" style="padding: 6px 15px;"><i class="fas fa-trash"></i></button>
-            </div>
-        `;
-    }
-    document.getElementById('keysList').innerHTML = html;
 }
 
 async function addKeys() {
     const input = document.getElementById('keysInput');
-    const keysList = input.value.split('\n').filter(k => k.trim().length > 0);
-    if (keysList.length === 0) {
-        showToast('❌ Please enter at least one key!', 'error');
+    const keyList = input.value.split('\n').filter(k => k.trim().length > 0);
+    if (keyList.length === 0) {
+        showToast('Enter keys first!', 'error');
         return;
     }
-    await apiCall('/keys', 'POST', { product: currentProduct, duration: currentDuration, keys: keysList });
+    await fetch('/api/keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ product: currentProduct, duration: currentDur, keys: keyList })
+    });
     input.value = '';
     await refreshKeysList();
-    showToast(`✅ ${keysList.length} keys added to ${productNames[currentProduct]} ${currentDuration}!`, 'success');
+    showToast(`✅ ${keyList.length} keys added!`);
 }
 
-async function generateKeys() {
-    await apiCall('/keys/generate', 'POST', {
-        product: currentProduct,
-        duration: currentDuration,
-        count: 10,
-        prefix: prefixes[currentProduct]
+async function genKeys() {
+    await fetch('/api/keys/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ product: currentProduct, duration: currentDur, count: 10, prefix: prefixes[currentProduct] })
     });
     await refreshKeysList();
-    showToast(`🎲 10 keys generated for ${productNames[currentProduct]}!`, 'success');
+    showToast('🎲 10 keys generated!');
 }
 
 async function deleteKey(index) {
-    const data = await apiCall(`/keys/${currentProduct}/${currentDuration}`);
-    const keysList = data.keys || [];
-    keysList.splice(index, 1);
-    await apiCall('/keys', 'POST', { product: currentProduct, duration: currentDuration, keys: keysList });
+    const res = await fetch(`/api/keys/${currentProduct}/${currentDur}`);
+    const data = await res.json();
+    const keyList = data.keys || [];
+    keyList.splice(index, 1);
+    await fetch('/api/keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ product: currentProduct, duration: currentDur, keys: keyList })
+    });
     await refreshKeysList();
-    showToast('🗑️ Key deleted!', 'info');
+    showToast('🗑️ Key deleted');
 }
 
 async function clearPool() {
-    if (!confirm(`⚠️ Delete ALL ${currentDuration} keys for ${productNames[currentProduct]}?`)) return;
-    await apiCall(`/keys/${currentProduct}/${currentDuration}`, 'DELETE');
+    if (!confirm('Delete all keys?')) return;
+    await fetch(`/api/keys/${currentProduct}/${currentDur}`, { method: 'DELETE' });
     await refreshKeysList();
-    showToast(`🗑️ ${productNames[currentProduct]} ${currentDuration} pool cleared!`, 'info');
+    showToast('Pool cleared');
 }
 
-function filterKeys() {
-    const search = document.getElementById('keySearch').value.toLowerCase();
-    const items = document.querySelectorAll('.key-item');
-    items.forEach(item => {
-        const text = item.innerText.toLowerCase();
-        item.style.display = text.includes(search) ? 'flex' : 'none';
-    });
-}
-
-function copyAllKeys() {
-    const items = document.querySelectorAll('.key-item code');
-    const keys = Array.from(items).map(item => item.innerText).join('\n');
-    navigator.clipboard.writeText(keys);
-    showToast(`📋 Copied ${items.length} keys to clipboard!`, 'success');
-}
-
-function exportKeys() {
-    showToast('📥 Export feature coming soon!', 'info');
-}
-
-// ============================================================
-// PRODUCTS UI
-// ============================================================
-function loadProductsUI() {
-    let html = `
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title"><i class="fas fa-plus-circle"></i> Add New Product</div>
-            </div>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
-                <input type="text" id="newProductId" placeholder="Product ID (e.g., newtool)">
-                <input type="text" id="newProductName" placeholder="Product Name (e.g., New Tool)">
-                <input type="text" id="newProductEmoji" placeholder="Emoji (e.g., 🚀)">
-                <input type="text" id="newProductPrefix" placeholder="Key Prefix (e.g., NEW)">
-                <input type="number" id="newProductDayPrice" placeholder="Day Price ₹">
-                <input type="number" id="newProductWeekPrice" placeholder="Week Price ₹">
-                <input type="number" id="newProductMonthPrice" placeholder="Month Price ₹">
-            </div>
-            <button class="btn-success" onclick="addNewProduct()" style="margin-top: 20px;"><i class="fas fa-plus"></i> Create Product</button>
-        </div>
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title"><i class="fas fa-boxes"></i> Existing Products</div>
-                <div class="search-bar"><i class="fas fa-search"></i><input type="text" id="productSearch" placeholder="Search products..." onkeyup="filterProducts()"></div>
-            </div>
-            <div id="productsGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;"></div>
-        </div>
-    `;
-    document.getElementById('contentArea').innerHTML = html;
-    renderProductsGrid();
-}
-
-function renderProductsGrid() {
-    let html = '';
-    for (let [id, p] of Object.entries(allData.products)) {
-        const dayStock = allData.keys[id]?.day?.length || 0;
-        const weekStock = allData.keys[id]?.week?.length || 0;
-        const monthStock = allData.keys[id]?.month?.length || 0;
+// ==================== PRODUCTS ====================
+async function loadProductsUI() {
+    let html = '<div class="card"><h3>Products</h3>';
+    for (let [id, p] of Object.entries(products)) {
         html += `
-            <div class="product-card" style="background: var(--bg-tertiary); border-radius: 16px; padding: 20px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                    <span style="font-size: 24px;">${p.name.charAt(0) === 'D' ? '🎯' : p.name.charAt(0) === 'V' ? '👁️' : p.name.charAt(0) === 'R' ? '⚡' : '💻'}</span>
-                    <span style="background: var(--accent-gradient); padding: 4px 12px; border-radius: 20px; font-size: 11px;">${id}</span>
-                </div>
-                <h3 style="margin-bottom: 10px;">${p.name}</h3>
-                <div style="margin-bottom: 15px;">
-                    <div><span style="color: var(--success);">🟢 Day:</span> ₹${p.prices.day} | <span style="color: var(--warning);">🟡 Week:</span> ₹${p.prices.week} | <span style="color: var(--danger);">🔴 Month:</span> ₹${p.prices.month}</div>
-                    <div style="font-size: 12px; color: var(--text-secondary); margin-top: 5px;">Stock: 🟢${dayStock} 🟡${weekStock} 🔴${monthStock}</div>
-                </div>
-                <div style="display: flex; gap: 8px;">
-                    <button class="btn-warning" onclick="editProductPrices('${id}')" style="flex: 1;"><i class="fas fa-edit"></i> Edit</button>
-                    ${id !== 'deadeye' && id !== 'vision' && id !== 'rage' && id !== 'winios' && id !== 'kingios' ? `<button class="btn-danger" onclick="deleteProduct('${id}')" style="flex: 1;"><i class="fas fa-trash"></i> Delete</button>` : ''}
-                </div>
+            <div style="margin-bottom: 16px; padding: 12px; background: #1a1a26; border-radius: 12px;">
+                <b>${id.toUpperCase()}</b><br>
+                🟢 Day: ₹${p.day} | 🟡 Week: ₹${p.week} | 🔴 Month: ₹${p.month}<br>
+                <button class="btn-warning btn-sm" onclick="editProduct('${id}')">Edit Price</button>
             </div>
         `;
     }
-    document.getElementById('productsGrid').innerHTML = html;
+    html += `<hr><h4>Add New Product</h4>
+        <input type="text" id="newProductId" placeholder="Product ID" style="margin-bottom:8px">
+        <input type="text" id="newProductName" placeholder="Product Name" style="margin-bottom:8px">
+        <input type="text" id="newProductPrefix" placeholder="Prefix (e.g., NEW)" style="margin-bottom:8px">
+        <div style="display:flex;gap:8px;">
+            <input type="number" id="newDayPrice" placeholder="Day Price">
+            <input type="number" id="newWeekPrice" placeholder="Week Price">
+            <input type="number" id="newMonthPrice" placeholder="Month Price">
+        </div>
+        <button class="btn-success" onclick="addNewProduct()" style="margin-top:12px">Create Product</button>
+    </div>`;
+    document.getElementById('content').innerHTML = html;
+}
+
+async function editProduct(id) {
+    const newDay = prompt('New Day price:', products[id].day);
+    const newWeek = prompt('New Week price:', products[id].week);
+    const newMonth = prompt('New Month price:', products[id].month);
+    if (newDay && newWeek && newMonth) {
+        await fetch('/api/prices', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ product: id, prices: { day: parseInt(newDay), week: parseInt(newWeek), month: parseInt(newMonth) } })
+        });
+        await loadAllData();
+        await loadProductsUI();
+        showToast('✅ Price updated!');
+    }
 }
 
 async function addNewProduct() {
-    const id = document.getElementById('newProductId').value.toLowerCase().trim();
+    const id = document.getElementById('newProductId').value.trim().toLowerCase();
     const name = document.getElementById('newProductName').value.trim();
-    const emoji = document.getElementById('newProductEmoji').value.trim() || '📦';
-    const prefix = document.getElementById('newProductPrefix').value.toUpperCase().trim();
-    const dayPrice = parseInt(document.getElementById('newProductDayPrice').value);
-    const weekPrice = parseInt(document.getElementById('newProductWeekPrice').value);
-    const monthPrice = parseInt(document.getElementById('newProductMonthPrice').value);
+    const prefix = document.getElementById('newProductPrefix').value.trim().toUpperCase();
+    const dayPrice = parseInt(document.getElementById('newDayPrice').value);
+    const weekPrice = parseInt(document.getElementById('newWeekPrice').value);
+    const monthPrice = parseInt(document.getElementById('newMonthPrice').value);
     
     if (!id || !name || !prefix || isNaN(dayPrice)) {
-        showToast('❌ Please fill all required fields!', 'error');
+        showToast('Fill all fields!', 'error');
         return;
     }
     
-    allData.products[id] = { name, prices: { day: dayPrice, week: weekPrice, month: monthPrice } };
-    allData.keys[id] = { day: [], week: [], month: [] };
-    
-    await apiCall('/prices', 'POST', { product: id, prices: allData.products[id].prices });
-    
-    document.getElementById('newProductId').value = '';
-    document.getElementById('newProductName').value = '';
-    document.getElementById('newProductEmoji').value = '';
-    document.getElementById('newProductPrefix').value = '';
-    document.getElementById('newProductDayPrice').value = '';
-    document.getElementById('newProductWeekPrice').value = '';
-    document.getElementById('newProductMonthPrice').value = '';
-    
-    renderProductsGrid();
-    showToast(`✅ Product "${name}" created successfully!`, 'success');
-}
-
-async function editProductPrices(id) {
-    const p = allData.products[id];
-    const newDay = prompt('Enter new Day price:', p.prices.day);
-    const newWeek = prompt('Enter new Week price:', p.prices.week);
-    const newMonth = prompt('Enter new Month price:', p.prices.month);
-    
-    if (newDay && newWeek && newMonth) {
-        p.prices = { day: parseInt(newDay), week: parseInt(newWeek), month: parseInt(newMonth) };
-        await apiCall('/prices', 'POST', { product: id, prices: p.prices });
-        renderProductsGrid();
-        showToast(`✅ ${p.name} prices updated!`, 'success');
-    }
-}
-
-function filterProducts() {
-    const search = document.getElementById('productSearch').value.toLowerCase();
-    const cards = document.querySelectorAll('.product-card');
-    cards.forEach(card => {
-        const text = card.innerText.toLowerCase();
-        card.style.display = text.includes(search) ? 'block' : 'none';
-    });
-}
-
-// ============================================================
-// SUB ADMINS UI
-// ============================================================
-let subAdmins = [];
-
-function loadAdminsUI() {
-    let html = `
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title"><i class="fas fa-user-plus"></i> Add New Sub Admin</div>
-            </div>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
-                <input type="text" id="subName" placeholder="Full Name">
-                <input type="text" id="subUsername" placeholder="Username">
-                <input type="text" id="subPassword" placeholder="Password">
-                <select id="subPermissions">
-                    <option value="full">Full Access</option>
-                    <option value="keys">Key Management Only</option>
-                    <option value="orders">Orders Only</option>
-                    <option value="customers">Customers Only</option>
-                </select>
-            </div>
-            <button class="btn-success" onclick="addSubAdmin()" style="margin-top: 20px;"><i class="fas fa-plus"></i> Create Sub Admin</button>
-        </div>
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title"><i class="fas fa-user-shield"></i> Current Sub Admins</div>
-            </div>
-            <div id="subAdminsGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;"></div>
-        </div>
-    `;
-    document.getElementById('contentArea').innerHTML = html;
-    renderSubAdminsGrid();
-}
-
-function renderSubAdminsGrid() {
-    if (subAdmins.length === 0) {
-        document.getElementById('subAdminsGrid').innerHTML = '<div style="text-align: center; padding: 40px;">No sub admins yet. Add one above!</div>';
-        return;
-    }
-    
-    let html = '';
-    for (let a of subAdmins) {
-        html += `
-            <div style="background: var(--bg-tertiary); border-radius: 16px; padding: 20px;">
-                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 15px;">
-                    <div style="width: 50px; height: 50px; background: var(--accent-gradient); border-radius: 50%; display: flex; align-items: center; justify-content: center;">
-                        <i class="fas fa-user-shield" style="font-size: 24px;"></i>
-                    </div>
-                    <div>
-                        <h3 style="font-size: 16px;">${a.name}</h3>
-                        <p style="color: var(--text-secondary); font-size: 12px;">@${a.username}</p>
-                    </div>
-                </div>
-                <div style="margin-bottom: 15px;">
-                    <span style="background: var(--accent-gradient); padding: 4px 12px; border-radius: 20px; font-size: 11px;">${a.permissions}</span>
-                </div>
-                <button class="btn-danger" onclick="removeSubAdmin('${a.id}')" style="width: 100%;"><i class="fas fa-trash"></i> Remove</button>
-            </div>
-        `;
-    }
-    document.getElementById('subAdminsGrid').innerHTML = html;
-}
-
-function addSubAdmin() {
-    const name = document.getElementById('subName').value.trim();
-    const username = document.getElementById('subUsername').value.trim();
-    const password = document.getElementById('subPassword').value.trim();
-    const permissions = document.getElementById('subPermissions').value;
-    
-    if (!name || !username || !password) {
-        showToast('❌ Please fill all fields!', 'error');
-        return;
-    }
-    
-    subAdmins.push({
-        id: `sub_${Date.now()}`,
-        name, username, password,
-        permissions: permissions === 'full' ? 'Full Access' : permissions === 'keys' ? 'Key Management Only' : permissions === 'orders' ? 'Orders Only' : 'Customers Only',
-        rawPermissions: permissions
+    await fetch('/api/prices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ product: id, prices: { day: dayPrice, week: weekPrice, month: monthPrice } })
     });
     
-    document.getElementById('subName').value = '';
-    document.getElementById('subUsername').value = '';
-    document.getElementById('subPassword').value = '';
-    
-    renderSubAdminsGrid();
-    showToast(`✅ Sub Admin "${name}" created! Password: ${password}`, 'success');
+    await loadAllData();
+    await loadProductsUI();
+    showToast(`✅ Product ${name} created!`);
 }
 
-function removeSubAdmin(id) {
-    if (confirm('Remove this sub admin?')) {
-        subAdmins = subAdmins.filter(a => a.id !== id);
-        renderSubAdminsGrid();
-        showToast('🗑️ Sub admin removed!', 'info');
-    }
-}
-
-// ============================================================
-// CUSTOMERS UI
-// ============================================================
-function loadCustomersUI() {
-    const entries = Object.entries(allData.users);
-    if (entries.length === 0) {
-        document.getElementById('contentArea').innerHTML = '<div class="card"><div style="text-align: center; padding: 40px;"><i class="fas fa-users" style="font-size: 48px; opacity: 0.3;"></i><p style="margin-top: 10px;">No customers yet</p></div></div>';
+// ==================== ORDERS ====================
+async function loadOrdersUI() {
+    if (orders.length === 0) {
+        document.getElementById('content').innerHTML = '<div class="card">No orders yet</div>';
         return;
     }
-    
-    let html = `
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title"><i class="fas fa-users"></i> Customer Directory</div>
-                <div class="search-bar"><i class="fas fa-search"></i><input type="text" id="customerSearch" placeholder="Search customers..." onkeyup="filterCustomers()"></div>
-            </div>
-            <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 20px;">
-                <div class="stat-card"><div class="stat-value">${entries.length}</div><div class="stat-label">Total Customers</div></div>
-                <div class="stat-card"><div class="stat-value">${entries.reduce((sum, [_, u]) => sum + (u.keys?.length || 0), 0)}</div><div class="stat-label">Total Keys Sold</div></div>
-                <div class="stat-card"><div class="stat-value">${entries.filter(([_, u]) => (u.keys?.length || 0) > 0).length}</div><div class="stat-label">Active Customers</div></div>
-            </div>
-            <table class="data-table" id="customersTable">
-                <thead><tr><th>User ID</th><th>Username</th><th>Keys Purchased</th><th>Recent Key</th><th>Last Purchase</th></tr></thead>
-                <tbody id="customersBody"></tbody>
-            </table>
-            <div style="margin-top: 20px; text-align: center;">
-                <button class="btn-outline" onclick="exportCustomers()"><i class="fas fa-download"></i> Export Customer List</button>
-            </div>
-        </div>
-    `;
-    document.getElementById('contentArea').innerHTML = html;
-    renderCustomersTable();
-}
-
-function renderCustomersTable() {
-    let html = '';
-    for (let [id, user] of Object.entries(allData.users)) {
-        const keysList = user.keys || [];
-        const lastKey = keysList[keysList.length - 1];
-        html += `<tr>
-            <td><code>${id}</code></td>
-            <td>@${user.username || 'Unknown'}</td>
-            <td><span style="color: var(--success); font-weight: 600;">${keysList.length}</span> keys</td>
-            <td><code style="font-size: 11px;">${lastKey ? lastKey.key : '-'}</code></td>
-            <td style="font-size: 12px;">${lastKey ? lastKey.date : '-'}</td>
-        </tr>`;
+    let html = '<div class="card"><h3>Orders</h3>';
+    for (let o of orders.slice(0, 30)) {
+        html += `<div style="padding: 10px; border-bottom: 1px solid #2a2a3d;">
+            ${o.username} - ${o.product} - ₹${o.amount}<br>
+            <small style="color:#94a3b8">${o.date || ''}</small>
+            <code style="display:block;font-size:11px">${o.key || ''}</code>
+        </div>`;
     }
-    document.getElementById('customersBody').innerHTML = html;
-}
-
-function filterCustomers() {
-    const search = document.getElementById('customerSearch').value.toLowerCase();
-    const rows = document.querySelectorAll('#customersTable tbody tr');
-    rows.forEach(row => {
-        const text = row.innerText.toLowerCase();
-        row.style.display = text.includes(search) ? '' : 'none';
-    });
-}
-
-function exportCustomers() {
-    showToast('📥 Export feature coming soon!', 'info');
-}
-
-// ============================================================
-// ORDERS UI
-// ============================================================
-function loadOrdersUI() {
-    if (allData.orders.length === 0) {
-        document.getElementById('contentArea').innerHTML = '<div class="card"><div style="text-align: center; padding: 40px;"><i class="fas fa-shopping-cart" style="font-size: 48px; opacity: 0.3;"></i><p style="margin-top: 10px;">No orders yet</p></div></div>';
-        return;
-    }
-    
-    let totalAmount = allData.orders.reduce((sum, o) => sum + (o.amount || 0), 0);
-    
-    let html = `
-        <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 20px;">
-            <div class="stat-card"><div class="stat-value">${allData.orders.length}</div><div class="stat-label">Total Orders</div></div>
-            <div class="stat-card"><div class="stat-value">₹${totalAmount.toLocaleString()}</div><div class="stat-label">Total Sales</div></div>
-            <div class="stat-card"><div class="stat-value">${(totalAmount / allData.orders.length).toFixed(0)}</div><div class="stat-label">Avg Order Value</div></div>
-        </div>
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title"><i class="fas fa-shopping-cart"></i> Order History</div>
-                <div class="search-bar"><i class="fas fa-search"></i><input type="text" id="orderSearch" placeholder="Search orders..." onkeyup="filterOrders()"></div>
-            </div>
-            <button class="btn-danger" onclick="clearAllOrders()" style="margin-bottom: 20px;"><i class="fas fa-trash"></i> Clear All Orders</button>
-            <table class="data-table" id="ordersTable">
-                <thead><tr><th>#</th><th>User</th><th>Product</th><th>Duration</th><th>Amount</th><th>Key</th><th>Date</th></tr></thead>
-                <tbody id="ordersBody"></tbody>
-            </table>
-            <div style="margin-top: 20px; text-align: center;">
-                <button class="btn-outline" onclick="exportOrders()"><i class="fas fa-download"></i> Export Orders (CSV)</button>
-                <button class="btn-outline" onclick="generateInvoice()"><i class="fas fa-file-pdf"></i> Generate Report</button>
-            </div>
-        </div>
-    `;
-    document.getElementById('contentArea').innerHTML = html;
-    renderOrdersTable();
-}
-
-function renderOrdersTable() {
-    let html = '';
-    for (let i = 0; i < allData.orders.length; i++) {
-        const o = allData.orders[i];
-        html += `<tr>
-            <td>${allData.orders.length - i}</td>
-            <td>@${o.username || '-'}</td>
-            <td>${o.product || '-'}</td>
-            <td><span style="color: ${o.duration === 'day' ? '#10b981' : o.duration === 'week' ? '#f59e0b' : '#ef4444'}">${o.duration || '-'}</span></td>
-            <td style="color: var(--success); font-weight: 600;">₹${o.amount || 0}</td>
-            <td><code style="font-size: 11px;">${o.key || '-'}</code></td>
-            <td style="font-size: 12px;">${o.date || '-'}</td>
-        </tr>`;
-    }
-    document.getElementById('ordersBody').innerHTML = html;
-}
-
-function filterOrders() {
-    const search = document.getElementById('orderSearch').value.toLowerCase();
-    const rows = document.querySelectorAll('#ordersTable tbody tr');
-    rows.forEach(row => {
-        const text = row.innerText.toLowerCase();
-        row.style.display = text.includes(search) ? '' : 'none';
-    });
+    html += `<button class="btn-danger" onclick="clearAllOrders()" style="margin-top:12px">Clear All</button></div>`;
+    document.getElementById('content').innerHTML = html;
 }
 
 async function clearAllOrders() {
-    if (!confirm('⚠️ Delete ALL orders permanently? This cannot be undone!')) return;
-    await apiCall('/orders', 'DELETE');
-    allData.orders = [];
-    loadOrdersUI();
-    showToast('🗑️ All orders cleared!', 'info');
+    if (!confirm('Delete all orders?')) return;
+    await fetch('/api/orders', { method: 'DELETE' });
+    orders = [];
+    await loadOrdersUI();
+    showToast('Orders cleared');
 }
 
-function exportOrders() {
-    let csv = "Order#,User,Product,Duration,Amount,Key,Date\n";
-    for (let i = 0; i < allData.orders.length; i++) {
-        const o = allData.orders[i];
-        csv += `${i + 1},${o.username},${o.product},${o.duration},${o.amount},${o.key},${o.date}\n`;
+// ==================== USERS ====================
+async function loadUsersUI() {
+    let entries = Object.entries(users);
+    if (entries.length === 0) {
+        document.getElementById('content').innerHTML = '<div class="card">No users yet</div>';
+        return;
     }
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `orders_${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast('📥 Orders exported successfully!', 'success');
-}
-
-function generateInvoice() {
-    showToast('📄 Generating PDF report...', 'info');
-    setTimeout(() => {
-        showToast('📄 PDF report feature coming soon!', 'info');
-    }, 1000);
-}
-
-// ============================================================
-// ANALYTICS UI
-// ============================================================
-function loadAnalyticsUI() {
-    let totalRevenue = allData.orders.reduce((sum, o) => sum + (o.amount || 0), 0);
-    let productSales = {};
-    allData.orders.forEach(o => { productSales[o.product] = (productSales[o.product] || 0) + 1; });
-    
-    document.getElementById('contentArea').innerHTML = `
-        <div class="stats-grid">
-            <div class="stat-card"><div class="stat-value">${((totalRevenue / 100000) * 100).toFixed(1)}%</div><div class="stat-label">Growth Rate</div></div>
-            <div class="stat-card"><div class="stat-value">${Math.round(totalRevenue / (allData.orders.length || 1))}</div><div class="stat-label">Avg Order Value</div></div>
-            <div class="stat-card"><div class="stat-value">${Object.keys(allData.users).length}</div><div class="stat-label">Customer Base</div></div>
-            <div class="stat-card"><div class="stat-value">${allData.orders.length}</div><div class="stat-label">Total Transactions</div></div>
-        </div>
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title"><i class="fas fa-chart-pie"></i> Sales Distribution</div>
-            </div>
-            <canvas id="salesChart" style="max-height: 300px;"></canvas>
-        </div>
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title"><i class="fas fa-chart-bar"></i> Performance Metrics</div>
-            </div>
-            <div id="metrics"></div>
-        </div>
-    `;
-    
-    // Sales Chart
-    const ctx = document.getElementById('salesChart').getContext('2d');
-    new Chart(ctx, {
-        type: 'pie',
-        data: {
-            labels: Object.keys(productSales),
-            datasets: [{
-                data: Object.values(productSales),
-                backgroundColor: ['#7c3aed', '#10b981', '#f59e0b', '#ef4444', '#3b82f6']
-            }]
-        },
-        options: { responsive: true }
-    });
-    
-    // Metrics
-    let metricsHtml = '<div class="stats-grid">';
-    for (let [p, count] of Object.entries(productSales)) {
-        let revenue = allData.orders.filter(o => o.product === p).reduce((sum, o) => sum + (o.amount || 0), 0);
-        metricsHtml += `<div class="stat-card">
-            <div class="stat-value">${count}</div>
-            <div class="stat-label">${p} Sales</div>
-            <div style="font-size: 12px; margin-top: 5px;">₹${revenue.toLocaleString()}</div>
+    let html = '<div class="card"><h3>Users</h3>';
+    for (let [id, u] of entries) {
+        html += `<div style="padding: 10px; border-bottom: 1px solid #2a2a3d;">
+            ${id} - @${u.username || 'unknown'}<br>
+            <small>${(u.keys || []).length} keys purchased</small>
         </div>`;
     }
-    document.getElementById('metrics').innerHTML = metricsHtml + '</div>';
+    html += '</div>';
+    document.getElementById('content').innerHTML = html;
 }
 
-// ============================================================
-// SETTINGS UI
-// ============================================================
-function loadSettingsUI() {
-    document.getElementById('contentArea').innerHTML = `
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title"><i class="fas fa-database"></i> Database Management</div>
-            </div>
-            <div style="display: flex; gap: 15px; flex-wrap: wrap;">
-                <button class="btn-primary" onclick="backupDatabase()"><i class="fas fa-download"></i> Backup Database</button>
-                <button class="btn-success" onclick="restoreDatabase()"><i class="fas fa-upload"></i> Restore Database</button>
-                <button class="btn-danger" onclick="resetDatabase()"><i class="fas fa-refresh"></i> Reset Database</button>
-            </div>
-        </div>
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title"><i class="fas fa-cog"></i> System Settings</div>
-            </div>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
-                <div><label>UPI ID</label><input type="text" id="upiId" value="q542401897@ybl"></div>
-                <div><label>UPI Name</label><input type="text" id="upiName" value="Reddy Premium"></div>
-                <div><label>Support Username</label><input type="text" id="supportUser" value="ReddyHack"></div>
-                <div><label>Admin Telegram ID</label><input type="text" id="adminId" value="1648621649"></div>
-            </div>
-            <button class="btn-primary" onclick="saveSettings()" style="margin-top: 20px;"><i class="fas fa-save"></i> Save Settings</button>
-        </div>
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title"><i class="fas fa-chart-line"></i> System Status</div>
-            </div>
-            <div class="stats-grid" style="grid-template-columns: repeat(2, 1fr);">
-                <div class="stat-card"><div class="stat-value" id="botStatus">✅ Online</div><div class="stat-label">Bot Status</div></div>
-                <div class="stat-card"><div class="stat-value" id="apiStatus">✅ Connected</div><div class="stat-label">API Status</div></div>
-            </div>
-        </div>
-    `;
-}
-
-function backupDatabase() {
-    const dataStr = JSON.stringify({ products: allData.products, keys: allData.keys, orders: allData.orders, users: allData.users }, null, 2);
-    const blob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `reddy_backup_${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast('📥 Database backup created!', 'success');
-}
-
-function restoreDatabase() {
-    showToast('📤 Click the file input to restore', 'info');
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.json';
-    input.onchange = async (e) => {
-        const file = e.target.files[0];
-        const text = await file.text();
-        const data = JSON.parse(text);
-        if (data.products) allData.products = data.products;
-        if (data.keys) allData.keys = data.keys;
-        if (data.orders) allData.orders = data.orders;
-        if (data.users) allData.users = data.users;
-        showToast('✅ Database restored!', 'success');
-        location.reload();
-    };
-    input.click();
-}
-
-function resetDatabase() {
-    if (confirm('⚠️ RESET entire database? This will delete ALL data!')) {
-        allData = { products: {}, keys: {}, orders: [], users: {}, admins: [] };
-        showToast('🔄 Database reset!', 'info');
-        location.reload();
-    }
-}
-
-function saveSettings() {
-    showToast('✅ Settings saved!', 'success');
-}
-
-// ============================================================
-// INITIALIZATION
-// ============================================================
-// Load saved theme
-const savedTheme = localStorage.getItem('theme');
-if (savedTheme) {
-    currentTheme = savedTheme;
-    document.documentElement.setAttribute('data-theme', currentTheme);
-}
-
-// Start
-loadAllData();
+// Auto-refresh data every 30 seconds
+setInterval(() => {
+    if (token) loadAllData();
+}, 30000);
 </script>
 </body>
 </html>
