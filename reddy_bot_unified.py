@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-👑 REDDY PREMIUM BOT - CLEAN & ATTRACTIVE EDITION
-Simple, Professional, No Overload
+👑 REDDY PREMIUM BOT - SIMPLE & PROFESSIONAL
+Clean, Trustworthy, Customer Friendly
 """
 
 import telebot
@@ -27,11 +27,11 @@ bot = telebot.TeleBot(BOT_TOKEN)
 pending_orders = {}
 
 PRODUCTS = {
-    "deadeye": {"name": "🎯 Deadeye", "prefix": "DEAD", "emoji": "🎯"},
-    "vision": {"name": "👁️ Vision", "prefix": "VIS", "emoji": "👁️"},
-    "rage": {"name": "⚡ Rage", "prefix": "RAGE", "emoji": "⚡"},
-    "winios": {"name": "💻 WinIOS", "prefix": "WIN", "emoji": "💻"},
-    "kingios": {"name": "👑 KingIOS", "prefix": "KING", "emoji": "👑"},
+    "deadeye": {"name": "Deadeye", "emoji": "🎯"},
+    "vision": {"name": "Vision", "emoji": "👁️"},
+    "rage": {"name": "Rage", "emoji": "⚡"},
+    "winios": {"name": "WinIOS", "emoji": "💻"},
+    "kingios": {"name": "KingIOS", "emoji": "👑"},
 }
 
 PRICES = {
@@ -40,6 +40,14 @@ PRICES = {
     "rage": {"day": 149, "week": 699, "month": 1299},
     "winios": {"day": 149, "week": 599, "month": 999},
     "kingios": {"day": 199, "week": 699, "month": 2200},
+}
+
+PREFIX = {
+    "deadeye": "DEAD",
+    "vision": "VIS",
+    "rage": "RAGE",
+    "winios": "WIN",
+    "kingios": "KING",
 }
 
 # Database
@@ -53,25 +61,16 @@ db = {
 # HELPERS
 # ============================================================
 
-def get_stock_count(product, duration):
+def get_stock(product, duration):
     try:
         return len(db["keys"].get(product, {}).get(duration, []))
     except:
         return 0
 
-def get_stock_emoji(count):
-    if count == 0:
-        return "🔴"
-    elif count < 5:
-        return "🟡"
-    else:
-        return "🟢"
-
 def pop_key(product, duration):
     pool = db["keys"].get(product, {}).get(duration, [])
     if pool:
-        key = pool.pop(0)
-        return key
+        return pool.pop(0)
     return None
 
 def save_user_key(user_id, username, product, duration, key):
@@ -83,7 +82,7 @@ def save_user_key(user_id, username, product, duration, key):
         "date": datetime.datetime.now().strftime("%d %b %Y %I:%M %p")
     })
 
-def make_upi_qr(amount, order_id):
+def make_qr(amount, order_id):
     upi = f"upi://pay?pa=q542401897@ybl&pn=Reddy+Premium&am={amount}&tn={order_id}&cu=INR"
     qr = qrcode.QRCode(box_size=8, border=2)
     qr.add_data(upi)
@@ -95,93 +94,79 @@ def make_upi_qr(amount, order_id):
     return buf
 
 # ============================================================
-# KEYBOARDS - CLEAN & SIMPLE
+# KEYBOARDS - SIMPLE & CLEAN
 # ============================================================
 
 def main_menu():
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
-        InlineKeyboardButton("🛒 Buy License", callback_data="purchase"),
-        InlineKeyboardButton("🔑 My Keys", callback_data="my_keys"),
-        InlineKeyboardButton("📦 Stock", callback_data="stock_status"),
-        InlineKeyboardButton("💬 Support", callback_data="support"),
+        InlineKeyboardButton("🛒 Buy", callback_data="buy"),
+        InlineKeyboardButton("🔑 My Keys", callback_data="mykeys"),
+        InlineKeyboardButton("📦 Stock", callback_data="stock"),
+        InlineKeyboardButton("💬 Help", callback_data="help"),
     )
     return kb
 
 def products_kb():
     kb = InlineKeyboardMarkup(row_width=2)
     for key, p in PRODUCTS.items():
-        total = get_stock_count(key, "day") + get_stock_count(key, "week") + get_stock_count(key, "month")
-        emoji = "🔴" if total == 0 else "🟢" if total > 10 else "🟡"
-        kb.add(InlineKeyboardButton(f"{p['emoji']} {p['name']} {emoji}", callback_data=f"prod_{key}"))
-    kb.add(InlineKeyboardButton("◀️ Main Menu", callback_data="main_menu"))
+        kb.add(InlineKeyboardButton(f"{p['emoji']} {p['name']}", callback_data=f"prod_{key}"))
+    kb.add(InlineKeyboardButton("◀️ Back", callback_data="back"))
     return kb
 
-def duration_kb(product):
+def plans_kb(product):
     kb = InlineKeyboardMarkup(row_width=1)
     prices = PRICES[product]
     
-    day_stock = get_stock_count(product, "day")
-    week_stock = get_stock_count(product, "week")
-    month_stock = get_stock_count(product, "month")
+    day_stock = get_stock(product, "day")
+    week_stock = get_stock(product, "week")
+    month_stock = get_stock(product, "month")
     
-    day_emoji = "🔴" if day_stock == 0 else "🟢" if day_stock > 5 else "🟡"
-    week_emoji = "🔴" if week_stock == 0 else "🟢" if week_stock > 5 else "🟡"
-    month_emoji = "🔴" if month_stock == 0 else "🟢" if month_stock > 5 else "🟡"
-    
-    day_text = f"{day_emoji} 24 Hours - ₹{prices['day']}"
-    week_text = f"{week_emoji} 7 Days - ₹{prices['week']}"
-    month_text = f"{month_emoji} 30 Days - ₹{prices['month']}"
+    day_btn = f"📅 1 Day - ₹{prices['day']}"
+    week_btn = f"📅 7 Days - ₹{prices['week']}"
+    month_btn = f"📅 30 Days - ₹{prices['month']}"
     
     if day_stock == 0:
-        day_text = f"🔴 24 Hours - ₹{prices['day']} (Sold Out)"
+        day_btn = f"📅 1 Day - ₹{prices['day']} ❌"
     if week_stock == 0:
-        week_text = f"🔴 7 Days - ₹{prices['week']} (Sold Out)"
+        week_btn = f"📅 7 Days - ₹{prices['week']} ❌"
     if month_stock == 0:
-        month_text = f"🔴 30 Days - ₹{prices['month']} (Sold Out)"
+        month_btn = f"📅 30 Days - ₹{prices['month']} ❌"
     
-    kb.add(InlineKeyboardButton(day_text, callback_data=f"dur_{product}_day"))
-    kb.add(InlineKeyboardButton(week_text, callback_data=f"dur_{product}_week"))
-    kb.add(InlineKeyboardButton(month_text, callback_data=f"dur_{product}_month"))
-    kb.add(InlineKeyboardButton("◀️ Back", callback_data="purchase"))
-    
+    kb.add(InlineKeyboardButton(day_btn, callback_data=f"plan_{product}_day"))
+    kb.add(InlineKeyboardButton(week_btn, callback_data=f"plan_{product}_week"))
+    kb.add(InlineKeyboardButton(month_btn, callback_data=f"plan_{product}_month"))
+    kb.add(InlineKeyboardButton("◀️ Back", callback_data="back"))
     return kb
 
-def payment_kb(order_id):
+def pay_kb(order_id):
     kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton("✅ I have paid", callback_data=f"paid_{order_id}"))
+    kb.add(InlineKeyboardButton("✅ Paid", callback_data=f"paid_{order_id}"))
     kb.add(InlineKeyboardButton("❌ Cancel", callback_data=f"cancel_{order_id}"))
     return kb
 
-def admin_kb(order_id, user_id):
+def admin_kb(order_id, uid):
     kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton("✅ Approve & Send Key", callback_data=f"approve_{order_id}_{user_id}"))
-    kb.add(InlineKeyboardButton("❌ Reject", callback_data=f"reject_{order_id}_{user_id}"))
-    return kb
-
-def back_kb():
-    kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton("◀️ Main Menu", callback_data="main_menu"))
+    kb.add(InlineKeyboardButton("✅ Approve", callback_data=f"ok_{order_id}_{uid}"))
+    kb.add(InlineKeyboardButton("❌ Reject", callback_data=f"no_{order_id}_{uid}"))
     return kb
 
 # ============================================================
-# MESSAGES - CLEAN & ATTRACTIVE
+# MESSAGES - SIMPLE & WELCOMING
 # ============================================================
 
 @bot.message_handler(commands=['start'])
 def start(msg):
     text = f"""
-✨ *Welcome to Reddy Premium* ✨
+👋 Hello {msg.from_user.first_name}!
 
-━━━━━━━━━━━━━━━━━━━━━━
-💎 *Premium License Shop*
-⚡ *Instant Delivery*
-🛡️ *100% Trusted*
-━━━━━━━━━━━━━━━━━━━━━━
+Welcome to *Reddy Premium*
 
-👋 Hello @{msg.from_user.username or msg.from_user.first_name}!
+💎 Trusted License Shop
+⚡ Instant Delivery
+🛡️ 100% Genuine Keys
 
-👇 *Choose an option below*
+👇 Tap below to start
 """
     bot.send_message(msg.chat.id, text, parse_mode="Markdown", reply_markup=main_menu())
 
@@ -192,46 +177,66 @@ def handle(call):
     uname = call.from_user.username or "User"
     data = call.data
 
-    if data == "main_menu":
-        bot.edit_message_text("✨ *Main Menu* ✨\n\n👇 Choose an option:", cid, call.message.id, parse_mode="Markdown", reply_markup=main_menu())
+    # Back to main menu
+    if data == "back":
+        bot.edit_message_text("👇 *Choose an option*", cid, call.message.id, parse_mode="Markdown", reply_markup=main_menu())
     
-    elif data == "purchase":
-        text = "🛒 *Select a product*\n\nChoose from our premium collection:"
-        bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=products_kb())
+    # Main menu options
+    elif data == "buy":
+        bot.edit_message_text("🛒 *Select Product*", cid, call.message.id, parse_mode="Markdown", reply_markup=products_kb())
     
-    elif data == "stock_status":
-        text = "📦 *Current Stock Status*\n\n"
+    elif data == "mykeys":
+        uid_str = str(uid)
+        keys = db["users"].get(uid_str, {}).get("keys", [])
+        if not keys:
+            text = "🔑 *My Keys*\n\nYou don't have any keys yet.\n\nUse Buy option to purchase."
+            bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=main_menu())
+        else:
+            text = "🔑 *Your Keys*\n\n"
+            for k in keys[-5:]:
+                text += f"📦 {k['product']} ({k['duration']})\n🔑 `{k['key']}`\n📅 {k['date']}\n\n"
+            bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=main_menu())
+    
+    elif data == "stock":
+        text = "📦 *Stock Available*\n\n"
         for key, p in PRODUCTS.items():
-            day = get_stock_count(key, "day")
-            week = get_stock_count(key, "week")
-            month = get_stock_count(key, "month")
+            day = get_stock(key, "day")
+            week = get_stock(key, "week")
+            month = get_stock(key, "month")
             total = day + week + month
             if total > 0:
-                text += f"{p['emoji']} *{p['name']}*\n"
-                text += f"  24H: {day} | 7D: {week} | 30D: {month}\n\n"
+                text += f"{p['emoji']} {p['name']}\n   1D:{day} | 7D:{week} | 30D:{month}\n\n"
             else:
-                text += f"{p['emoji']} *{p['name']}* - 🔴 Out of Stock\n\n"
-        bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=back_kb())
+                text += f"{p['emoji']} {p['name']} - Out of Stock\n\n"
+        bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=main_menu())
     
+    elif data == "help":
+        kb = InlineKeyboardMarkup()
+        kb.add(InlineKeyboardButton("📞 Contact", url="https://t.me/ReddyHack"))
+        kb.add(InlineKeyboardButton("◀️ Back", callback_data="back"))
+        text = "💬 *Need Help?\n\nContact our support team\n\n@ReddyHack"
+        bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=kb)
+    
+    # Product selected
     elif data.startswith("prod_"):
         product = data.split("_")[1]
         p = PRODUCTS[product]
-        text = f"{p['emoji']} *{p['name']}*\n\n💰 *Prices*\n━━━━━━━━━━━━━━━━\n"
-        text += f"🟢 24 Hours - ₹{PRICES[product]['day']}\n"
-        text += f"🟡 7 Days - ₹{PRICES[product]['week']}\n"
-        text += f"🔴 30 Days - ₹{PRICES[product]['month']}\n"
-        text += "━━━━━━━━━━━━━━━━\n✅ *Instant delivery after payment*"
-        bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=duration_kb(product))
+        text = f"{p['emoji']} *{p['name']}*\n\nChoose your plan:"
+        bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=plans_kb(product))
     
-    elif data.startswith("dur_"):
-        _, product, duration = data.split("_")
+    # Plan selected
+    elif data.startswith("plan_"):
+        parts = data.split("_")
+        product = parts[1]
+        duration = parts[2]
         
-        if get_stock_count(product, duration) == 0:
+        stock = get_stock(product, duration)
+        if stock == 0:
             bot.answer_callback_query(call.id, "❌ Sold out! Please choose another plan.", show_alert=True)
             return
         
         amount = PRICES[product][duration]
-        order_id = f"RDY{int(time.time())}{random.randint(100,999)}"
+        order_id = f"R{int(time.time())}{random.randint(10,99)}"
         
         pending_orders[order_id] = {
             "user_id": uid, "username": uname,
@@ -239,75 +244,73 @@ def handle(call):
             "amount": amount, "chat_id": cid
         }
         
-        qr = make_upi_qr(amount, order_id)
+        qr = make_qr(amount, order_id)
         
         caption = f"""
-🛒 *Order #`{order_id}`*
+🛒 *Order #{order_id}*
 
-📦 Product: {PRODUCTS[product]['name']}
-⏱️ Duration: {duration}
-💰 Amount: ₹{amount}
+📦 {PRODUCTS[product]['name']}
+⏱️ {duration}
+💰 ₹{amount}
 
 ━━━━━━━━━━━━━━━━
-📲 *UPI Payment*
-`q542401897@ybl`
+📲 *UPI:* `q542401897@ybl`
 
-💡 *After payment, tap "I have paid"*
-🔑 *Key will be delivered instantly*
+✅ Pay & tap "Paid"
+🔑 Key will be sent
 ━━━━━━━━━━━━━━━━
 """
         bot.delete_message(cid, call.message.id)
-        bot.send_photo(cid, qr, caption=caption, parse_mode="Markdown", reply_markup=payment_kb(order_id))
+        bot.send_photo(cid, qr, caption=caption, parse_mode="Markdown", reply_markup=pay_kb(order_id))
         
-        threading.Timer(900, lambda: expire_order(order_id, cid)).start()
+        threading.Timer(900, lambda: expire(order_id, cid)).start()
     
+    # User says paid
     elif data.startswith("paid_"):
         order_id = data.split("_")[1]
         if order_id not in pending_orders:
-            bot.answer_callback_query(call.id, "❌ Order expired!")
+            bot.answer_callback_query(call.id, "Order expired!")
             return
         
         o = pending_orders[order_id]
-        bot.answer_callback_query(call.id, "✅ Admin notified! Key coming soon.")
+        bot.answer_callback_query(call.id, "✅ Admin notified!")
         
-        admin_text = f"""
-🔔 *New Payment Claim*
+        msg = f"""
+🔔 *Payment Received*
 
-👤 User: @{uname}
-🆔 ID: `{uid}`
-📦 Product: {PRODUCTS[o['product']]['name']}
-⏱️ Duration: {o['duration']}
-💰 Amount: ₹{o['amount']}
-🆔 Order: `{order_id}`
+👤 @{uname}
+📦 {PRODUCTS[o['product']]['name']}
+⏱️ {o['duration']}
+💰 ₹{o['amount']}
+🆔 {order_id}
 
-⚠️ *Verify payment in UPI app*
-✅ *Then approve to send key*
+✅ Verify & Send Key
 """
-        bot.send_message(ADMIN_ID, admin_text, parse_mode="Markdown", reply_markup=admin_kb(order_id, cid))
+        bot.send_message(ADMIN_ID, msg, parse_mode="Markdown", reply_markup=admin_kb(order_id, cid))
     
-    elif data.startswith("approve_"):
+    # Admin approve
+    elif data.startswith("ok_"):
         parts = data.split("_")
         order_id = parts[1]
         user_cid = int(parts[2])
         
         if str(uid) != ADMIN_ID:
-            bot.answer_callback_query(call.id, "❌ Admin only!")
+            bot.answer_callback_query(call.id, "Admin only!")
             return
         
         if order_id not in pending_orders:
-            bot.answer_callback_query(call.id, "❌ Order expired!")
+            bot.answer_callback_query(call.id, "Order expired!")
             return
         
         o = pending_orders[order_id]
         
-        if get_stock_count(o['product'], o['duration']) == 0:
-            bot.answer_callback_query(call.id, "❌ No stock! Add keys first.")
+        if get_stock(o['product'], o['duration']) == 0:
+            bot.answer_callback_query(call.id, "No stock! Add keys first.")
             return
         
         key = pop_key(o['product'], o['duration'])
-        
         if not key:
-            bot.answer_callback_query(call.id, "❌ Failed! No key available.")
+            bot.answer_callback_query(call.id, "Error! No key.")
             return
         
         save_user_key(o['user_id'], o['username'], PRODUCTS[o['product']]['name'], o['duration'], key)
@@ -321,205 +324,157 @@ def handle(call):
             "date": datetime.datetime.now().strftime("%d %b %Y %I:%M %p")
         })
         
-        user_text = f"""
+        user_msg = f"""
 ✅ *Payment Verified!*
 
-━━━━━━━━━━━━━━━━
-📦 *Product:* {PRODUCTS[o['product']]['name']}
-⏱️ *Duration:* {o['duration']}
-💰 *Amount:* ₹{o['amount']}
-━━━━━━━━━━━━━━━━
+📦 {PRODUCTS[o['product']]['name']}
+⏱️ {o['duration']}
+💰 ₹{o['amount']}
 
-🔑 *Your License Key:*
+🔑 *Your Key:*
 `{key}`
 
-💡 *How to use:*
-1. Copy this key
-2. Open {PRODUCTS[o['product']]['name']}
-3. Paste and Activate
-4. Enjoy! 🎉
+💡 Copy and activate!
 
-━━━━━━━━━━━━━━━━
-👑 *Thank you for choosing Reddy Premium!*
+Thank you! 👑
 """
-        bot.send_message(user_cid, user_text, parse_mode="Markdown", reply_markup=main_menu())
+        bot.send_message(user_cid, user_msg, parse_mode="Markdown", reply_markup=main_menu())
         
-        remaining = get_stock_count(o['product'], o['duration'])
-        bot.send_message(ADMIN_ID, f"✅ Order completed! {remaining} keys left in stock")
-        
-        bot.answer_callback_query(call.id, "✅ Key delivered!")
+        bot.answer_callback_query(call.id, "✅ Key sent!")
         del pending_orders[order_id]
         bot.edit_message_reply_markup(cid, call.message.id, reply_markup=None)
     
-    elif data.startswith("reject_"):
+    # Admin reject
+    elif data.startswith("no_"):
         parts = data.split("_")
         order_id = parts[1]
         user_cid = int(parts[2])
         
         if str(uid) != ADMIN_ID:
-            bot.answer_callback_query(call.id, "❌ Admin only!")
+            bot.answer_callback_query(call.id, "Admin only!")
             return
         
-        bot.send_message(user_cid, "❌ *Payment not verified*\n\nPlease contact support for assistance.", parse_mode="Markdown", reply_markup=main_menu())
+        bot.send_message(user_cid, "❌ *Payment not verified*\n\nPlease try again or contact support.", parse_mode="Markdown", reply_markup=main_menu())
         bot.answer_callback_query(call.id, "❌ Rejected")
         if order_id in pending_orders:
             del pending_orders[order_id]
         bot.edit_message_reply_markup(cid, call.message.id, reply_markup=None)
     
+    # Cancel order
     elif data.startswith("cancel_"):
         order_id = data.split("_")[1]
         if order_id in pending_orders:
             del pending_orders[order_id]
-        bot.edit_message_caption(cid, call.message.id, caption="❌ *Order Cancelled*", reply_markup=None)
-        bot.send_message(cid, "🔄 *Start over from main menu*", parse_mode="Markdown", reply_markup=main_menu())
-    
-    elif data == "my_keys":
-        uid_str = str(call.from_user.id)
-        keys_list = db["users"].get(uid_str, {}).get("keys", [])
-        if not keys_list:
-            text = "🔑 *My Keys*\n\nYou haven't purchased any keys yet.\n\n🛒 *Buy now from the main menu!*"
-            bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=main_menu())
-        else:
-            text = "🔑 *Your Purchased Keys*\n\n"
-            for k in keys_list[-5:]:
-                text += f"📦 *{k['product']}* ({k['duration']})\n"
-                text += f"🔑 `{k['key']}`\n"
-                text += f"📅 {k['date']}\n━━━━━━━━━━━━━━━━\n"
-            text += "\n⚠️ *Keep your keys private!*"
-            bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=main_menu())
-    
-    elif data == "support":
-        kb = InlineKeyboardMarkup()
-        kb.add(InlineKeyboardButton("📞 Contact Support", url="https://t.me/ReddyHack"))
-        kb.add(InlineKeyboardButton("◀️ Main Menu", callback_data="main_menu"))
-        text = "💬 *Support*\n\nFor any issues or queries, contact our support team.\n\n📞 @ReddyHack"
-        bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=kb)
+        bot.edit_message_caption(cid, call.message.id, caption="❌ Cancelled", reply_markup=None)
+        bot.send_message(cid, "Start over from main menu 👇", reply_markup=main_menu())
 
-def expire_order(order_id, cid):
+def expire(order_id, cid):
     if order_id in pending_orders:
         del pending_orders[order_id]
         try:
-            bot.send_message(cid, "⌛ *Order Expired*\n\nTime limit exceeded. Please start a new purchase.", parse_mode="Markdown", reply_markup=main_menu())
+            bot.send_message(cid, "⌛ *Order expired*\n\nPlease start again.", parse_mode="Markdown", reply_markup=main_menu())
         except:
             pass
 
 # ============================================================
-# FLASK API ROUTES
+# FLASK API
 # ============================================================
 
 @app.route('/')
 def home():
-    total_keys = sum(len(db["keys"].get(p, {}).get(d, [])) for p in db["keys"] for d in ["day","week","month"])
-    return jsonify({"bot": "@ReddyBot", "status": "Online", "keys": total_keys})
+    return jsonify({"status": "online", "bot": "@ReddyBot"})
 
 @app.route('/admin')
-def admin_panel():
+def admin():
     return send_from_directory('.', 'admin_panel.html')
 
-@app.route('/api/dashboard', methods=['GET'])
-def api_dashboard():
+@app.route('/api/dashboard')
+def dashboard():
     total_keys = sum(len(db["keys"].get(p, {}).get(d, [])) for p in db["keys"] for d in ["day","week","month"])
-    total_revenue = sum(o.get("amount", 0) for o in db["orders"])
     return jsonify({
         "total_keys": total_keys,
         "total_orders": len(db["orders"]),
         "total_users": len(db["users"]),
-        "total_revenue": total_revenue
+        "total_revenue": sum(o.get("amount",0) for o in db["orders"])
     })
 
-@app.route('/api/keys/all', methods=['GET'])
-def api_keys_all():
+@app.route('/api/keys/all')
+def keys_all():
     return jsonify(db["keys"])
 
-@app.route('/api/keys/<product>/<duration>', methods=['GET'])
-def api_get_keys(product, duration):
-    return jsonify({"keys": db["keys"].get(product, {}).get(duration, [])})
+@app.route('/api/keys/<p>/<d>')
+def get_keys(p, d):
+    return jsonify({"keys": db["keys"].get(p, {}).get(d, [])})
 
 @app.route('/api/keys', methods=['POST'])
-def api_add_keys():
+def add_keys():
     data = request.json
-    product = data.get('product')
-    duration = data.get('duration')
-    keys_list = data.get('keys', [])
-    if product not in db["keys"]:
-        db["keys"][product] = {"day": [], "week": [], "month": []}
-    db["keys"][product][duration].extend(keys_list)
-    return jsonify({"success": True})
+    p, d, ks = data['product'], data['duration'], data['keys']
+    if p not in db["keys"]:
+        db["keys"][p] = {"day": [], "week": [], "month": []}
+    db["keys"][p][d].extend(ks)
+    return jsonify({"ok": True})
 
 @app.route('/api/keys/generate', methods=['POST'])
-def api_generate_keys():
+def gen_keys():
     data = request.json
-    product = data.get('product')
-    duration = data.get('duration')
-    count = data.get('count', 10)
-    prefix = data.get('prefix', 'KEY')
-    def gen():
-        parts = [''.join(random.choices(string.ascii_uppercase + string.digits, k=4)) for _ in range(3)]
-        return f"{prefix}-{'-'.join(parts)}"
-    new_keys = [gen() for _ in range(count)]
-    if product not in db["keys"]:
-        db["keys"][product] = {"day": [], "week": [], "month": []}
-    db["keys"][product][duration].extend(new_keys)
-    return jsonify({"success": True})
+    p, d, c = data['product'], data['duration'], data['count']
+    pre = PREFIX.get(p, "KEY")
+    def g():
+        return f"{pre}-{''.join(random.choices('ABCDEFGHJKLMNPQRSTUVWXYZ0123456789',k=4))}-{''.join(random.choices('ABCDEFGHJKLMNPQRSTUVWXYZ0123456789',k=4))}-{''.join(random.choices('ABCDEFGHJKLMNPQRSTUVWXYZ0123456789',k=4))}"
+    new = [g() for _ in range(c)]
+    if p not in db["keys"]:
+        db["keys"][p] = {"day": [], "week": [], "month": []}
+    db["keys"][p][d].extend(new)
+    return jsonify({"ok": True})
 
-@app.route('/api/keys/<product>/<duration>', methods=['DELETE'])
-def api_clear_keys(product, duration):
-    if product in db["keys"]:
-        db["keys"][product][duration] = []
-    return jsonify({"success": True})
+@app.route('/api/keys/<p>/<d>', methods=['DELETE'])
+def clear_keys(p, d):
+    if p in db["keys"]:
+        db["keys"][p][d] = []
+    return jsonify({"ok": True})
 
-@app.route('/api/prices', methods=['GET'])
-def api_get_prices():
+@app.route('/api/prices')
+def get_prices():
     return jsonify(PRICES)
 
 @app.route('/api/prices', methods=['POST'])
-def api_update_prices():
+def set_prices():
     data = request.json
-    product = data.get('product')
-    prices = data.get('prices')
-    PRICES[product] = prices
-    return jsonify({"success": True})
+    PRICES[data['product']] = data['prices']
+    return jsonify({"ok": True})
 
-@app.route('/api/orders', methods=['GET'])
-def api_get_orders():
+@app.route('/api/orders')
+def get_orders():
     return jsonify(db["orders"])
 
 @app.route('/api/orders', methods=['DELETE'])
-def api_clear_orders():
+def del_orders():
     db["orders"] = []
-    return jsonify({"success": True})
+    return jsonify({"ok": True})
 
-@app.route('/api/users', methods=['GET'])
-def api_get_users():
+@app.route('/api/users')
+def get_users():
     return jsonify(db["users"])
 
 @app.route('/api/auth', methods=['POST'])
-def api_auth():
-    data = request.json
-    if data.get('password') == "reddy2024":
-        return jsonify({"token": "reddy2024", "success": True})
-    return jsonify({"error": "Wrong password"}), 401
+def auth():
+    if request.json.get('password') == "reddy2024":
+        return jsonify({"token": "ok"})
+    return jsonify({"error": "Wrong"}), 401
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
     if request.headers.get('content-type') == 'application/json':
-        json_str = request.get_data().decode('UTF-8')
-        update = telebot.types.Update.de_json(json_str)
-        bot.process_new_updates([update])
+        bot.process_new_updates([telebot.types.Update.de_json(request.get_data().decode('UTF-8'))])
         return '', 200
     return '', 403
 
-# ============================================================
-# MAIN
-# ============================================================
 if __name__ == "__main__":
-    print("=" * 50)
-    print("👑 REDDY PREMIUM BOT - CLEAN EDITION")
-    print("=" * 50)
-    print("✅ Bot starting...")
-    
+    print("=" * 40)
+    print("🤖 REDDY BOT STARTING...")
+    print("=" * 40)
     bot.remove_webhook()
-    render_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://reddy-bot.onrender.com')
-    bot.set_webhook(url=f"{render_url}/webhook")
-    
+    url = os.environ.get('RENDER_EXTERNAL_URL', 'https://reddy-bot.onrender.com')
+    bot.set_webhook(f"{url}/webhook")
     app.run(host='0.0.0.0', port=8080)
