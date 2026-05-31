@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-👑 REDDY PREMIUM BOT - COMPLETE WITH ADMIN PANEL
+👑 REDDY PREMIUM BOT - WEBHOOK MODE (No conflict)
 """
 
 import telebot
@@ -12,6 +12,7 @@ import threading
 import time
 import io
 import qrcode
+import os
 from flask import Flask, request, jsonify, send_from_directory
 
 # ============================================================
@@ -243,9 +244,20 @@ def expire_order(order_id, cid):
             pass
 
 # ============================================================
+# WEBHOOK ENDPOINT
+# ============================================================
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    if request.headers.get('content-type') == 'application/json':
+        json_str = request.get_data().decode('UTF-8')
+        update = telebot.types.Update.de_json(json_str)
+        bot.process_new_updates([update])
+        return '', 200
+    return '', 403
+
+# ============================================================
 # ADMIN PANEL API ROUTES
 # ============================================================
-
 @app.route('/')
 def home():
     return jsonify({"bot": "@ReddyBot", "status": "Bot is running!"})
@@ -338,36 +350,27 @@ def api_auth():
         return jsonify({"token": "reddy2024", "success": True})
     return jsonify({"error": "Wrong password"}), 401
 
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    if request.headers.get('content-type') == 'application/json':
-        json_str = request.get_data().decode('UTF-8')
-        update = telebot.types.Update.de_json(json_str)
-        bot.process_new_updates([update])
-        return '', 200
-    return '', 403
-
 # ============================================================
-# MAIN
+# MAIN - WEBHOOK MODE
 # ============================================================
 if __name__ == "__main__":
     print("=" * 50)
-    print("🤖 REDDY PREMIUM BOT WITH ADMIN PANEL")
-    print("=" * 50)
-    print(f"✅ Bot Token: {BOT_TOKEN[:10]}...")
-    print(f"✅ Admin ID: {ADMIN_ID}")
-    print(f"✅ Admin Panel: /admin")
+    print("🤖 REDDY PREMIUM BOT - WEBHOOK MODE")
     print("=" * 50)
     
-    # Remove webhook and use polling
+    # Remove any existing webhook and set new one
     bot.remove_webhook()
     
-    # Start bot in background thread
-    def run_bot():
-        bot.infinity_polling(timeout=10, long_polling_timeout=5)
+    # Get Render URL from environment or use default
+    render_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://reddy-bot.onrender.com')
+    webhook_url = f"{render_url}/webhook"
     
-    bot_thread = threading.Thread(target=run_bot, daemon=True)
-    bot_thread.start()
+    # Set webhook
+    bot.set_webhook(url=webhook_url)
+    print(f"✅ Webhook set to: {webhook_url}")
+    
+    print(f"✅ Admin Panel: {render_url}/admin")
+    print("=" * 50)
     
     # Start Flask server
     app.run(host='0.0.0.0', port=8080)
