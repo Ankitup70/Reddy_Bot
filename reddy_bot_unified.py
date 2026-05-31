@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-👑 REDDY PREMIUM BOT - POLLING MODE (Working)
+👑 REDDY PREMIUM BOT - COMPLETE WITH ADMIN PANEL
 """
 
 import telebot
@@ -12,6 +12,7 @@ import threading
 import time
 import io
 import qrcode
+from flask import Flask, request, jsonify, send_from_directory
 
 # ============================================================
 # CONFIGURATION
@@ -19,6 +20,7 @@ import qrcode
 BOT_TOKEN = "8646356913:AAHqS40oeDQQPZRik2GYcE0nAjyQfdo5QVo"
 ADMIN_ID = "1648621649"
 
+app = Flask(__name__)
 bot = telebot.TeleBot(BOT_TOKEN)
 pending_orders = {}
 
@@ -38,10 +40,11 @@ PRICES = {
     "kingios": {"day": 199, "week": 699, "month": 2200},
 }
 
-# Simple database
+# Database
 db = {
     "users": {},
     "orders": [],
+    "keys": {p: {"day": [], "week": [], "month": []} for p in PRODUCTS},
 }
 
 def save_user_key(user_id, username, product, duration, key):
@@ -179,6 +182,15 @@ def handle(call):
         
         save_user_key(o['user_id'], o['username'], PRODUCTS[o['product']]['name'], o['duration'], key)
         
+        db["orders"].append({
+            "username": o['username'],
+            "product": PRODUCTS[o['product']]['name'],
+            "duration": o['duration'],
+            "amount": o['amount'],
+            "key": key,
+            "date": datetime.datetime.now().strftime("%d %b %Y")
+        })
+        
         bot.send_message(user_cid, f"✅ *KEY DELIVERED!*\n\n📦 {PRODUCTS[o['product']]['name']}\n🔑 `{key}`\n\nThank you for choosing Reddy Premium! 👑", parse_mode="Markdown", reply_markup=main_menu())
         bot.answer_callback_query(call.id, "✅ Approved! Key sent.")
         del pending_orders[order_id]
@@ -231,21 +243,131 @@ def expire_order(order_id, cid):
             pass
 
 # ============================================================
-# MAIN - POLLING MODE (No Webhook Needed)
+# ADMIN PANEL API ROUTES
+# ============================================================
+
+@app.route('/')
+def home():
+    return jsonify({"bot": "@ReddyBot", "status": "Bot is running!"})
+
+@app.route('/admin')
+def admin_panel():
+    return send_from_directory('.', 'admin_panel.html')
+
+@app.route('/api/dashboard', methods=['GET'])
+def api_dashboard():
+    total_keys = sum(len(db["keys"].get(p, {}).get(d, [])) for p in db["keys"] for d in ["day","week","month"])
+    total_revenue = sum(o.get("amount", 0) for o in db["orders"])
+    return jsonify({
+        "total_keys": total_keys,
+        "total_orders": len(db["orders"]),
+        "total_users": len(db["users"]),
+        "total_revenue": total_revenue
+    })
+
+@app.route('/api/keys/all', methods=['GET'])
+def api_keys_all():
+    return jsonify(db["keys"])
+
+@app.route('/api/keys/<product>/<duration>', methods=['GET'])
+def api_get_keys(product, duration):
+    return jsonify({"keys": db["keys"].get(product, {}).get(duration, [])})
+
+@app.route('/api/keys', methods=['POST'])
+def api_add_keys():
+    data = request.json
+    product = data.get('product')
+    duration = data.get('duration')
+    keys = data.get('keys', [])
+    if product not in db["keys"]:
+        db["keys"][product] = {"day": [], "week": [], "month": []}
+    db["keys"][product][duration].extend(keys)
+    return jsonify({"success": True, "added": len(keys)})
+
+@app.route('/api/keys/generate', methods=['POST'])
+def api_generate_keys():
+    data = request.json
+    product = data.get('product')
+    duration = data.get('duration')
+    count = data.get('count', 10)
+    prefix = data.get('prefix', 'KEY')
+    def gen():
+        parts = [''.join(random.choices(string.ascii_uppercase + string.digits, k=4)) for _ in range(3)]
+        return f"{prefix}-{'-'.join(parts)}"
+    new_keys = [gen() for _ in range(count)]
+    if product not in db["keys"]:
+        db["keys"][product] = {"day": [], "week": [], "month": []}
+    db["keys"][product][duration].extend(new_keys)
+    return jsonify({"success": True, "keys": new_keys})
+
+@app.route('/api/keys/<product>/<duration>', methods=['DELETE'])
+def api_clear_keys(product, duration):
+    if product in db["keys"]:
+        db["keys"][product][duration] = []
+    return jsonify({"success": True})
+
+@app.route('/api/prices', methods=['GET'])
+def api_get_prices():
+    return jsonify(PRICES)
+
+@app.route('/api/prices', methods=['POST'])
+def api_update_prices():
+    data = request.json
+    product = data.get('product')
+    prices = data.get('prices')
+    PRICES[product] = prices
+    return jsonify({"success": True})
+
+@app.route('/api/orders', methods=['GET'])
+def api_get_orders():
+    return jsonify(db["orders"])
+
+@app.route('/api/orders', methods=['DELETE'])
+def api_clear_orders():
+    db["orders"] = []
+    return jsonify({"success": True})
+
+@app.route('/api/users', methods=['GET'])
+def api_get_users():
+    return jsonify(db["users"])
+
+@app.route('/api/auth', methods=['POST'])
+def api_auth():
+    data = request.json
+    if data.get('password') == "reddy2024":
+        return jsonify({"token": "reddy2024", "success": True})
+    return jsonify({"error": "Wrong password"}), 401
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    if request.headers.get('content-type') == 'application/json':
+        json_str = request.get_data().decode('UTF-8')
+        update = telebot.types.Update.de_json(json_str)
+        bot.process_new_updates([update])
+        return '', 200
+    return '', 403
+
+# ============================================================
+# MAIN
 # ============================================================
 if __name__ == "__main__":
     print("=" * 50)
-    print("🤖 REDDY PREMIUM BOT STARTING...")
+    print("🤖 REDDY PREMIUM BOT WITH ADMIN PANEL")
     print("=" * 50)
     print(f"✅ Bot Token: {BOT_TOKEN[:10]}...")
     print(f"✅ Admin ID: {ADMIN_ID}")
-    print(f"✅ Mode: Polling (No webhook needed)")
-    print("=" * 50)
-    print("🎉 Bot is running! Press Ctrl+C to stop.")
+    print(f"✅ Admin Panel: /admin")
     print("=" * 50)
     
-    # Remove any existing webhook
+    # Remove webhook and use polling
     bot.remove_webhook()
     
-    # Start polling
-    bot.infinity_polling(timeout=10, long_polling_timeout=5)
+    # Start bot in background thread
+    def run_bot():
+        bot.infinity_polling(timeout=10, long_polling_timeout=5)
+    
+    bot_thread = threading.Thread(target=run_bot, daemon=True)
+    bot_thread.start()
+    
+    # Start Flask server
+    app.run(host='0.0.0.0', port=8080)
