@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-👑 REDDY PREMIUM BOT - SIMPLE & ATTRACTIVE (FINAL)
+👑 REDDY PREMIUM BOT - WITH SETUP GUIDES
 """
 
 import telebot
@@ -23,7 +23,25 @@ app = Flask(__name__)
 bot = telebot.TeleBot(BOT_TOKEN)
 pending_orders = {}
 
-# Stickers (only emojis, no fancy boxes)
+# Setup Videos (Replace with your actual video links)
+SETUP_VIDEOS = {
+    "deadeye": "https://youtu.be/example_deadeye",
+    "vision": "https://youtu.be/example_vision",
+    "rage": "https://youtu.be/example_rage",
+    "winios": "https://youtu.be/example_winios",
+    "kingios": "https://youtu.be/example_kingios",
+}
+
+# Setup Text Guides (optional)
+SETUP_TEXT = {
+    "deadeye": "1️⃣ Download Deadeye from official site\n2️⃣ Install and run\n3️⃣ Enter your license key\n4️⃣ Click Activate\n5️⃣ Enjoy!",
+    "vision": "1️⃣ Download Vision\n2️⃣ Disable antivirus temporarily\n3️⃣ Run as admin\n4️⃣ Enter key\n5️⃣ Activate",
+    "rage": "1️⃣ Extract Rage folder\n2️⃣ Run loader.exe\n3️⃣ Enter key\n4️⃣ Launch game\n5️⃣ Press INSERT to open menu",
+    "winios": "1️⃣ Install WinIOS\n2️⃣ Open as admin\n3️⃣ Paste key\n4️⃣ Restart app\n5️⃣ Done!",
+    "kingios": "1️⃣ Download KingIOS\n2️⃣ Disable Windows Defender\n3️⃣ Run installer\n4️⃣ Enter key\n5️⃣ Activate",
+}
+
+# Stickers
 STICKERS = {
     "welcome": "✨👑",
     "buy": "🛒💎",
@@ -32,6 +50,7 @@ STICKERS = {
     "payment": "💳",
     "stock": "📦",
     "support": "💬",
+    "setup": "🎥📺",
 }
 
 PRODUCTS = {
@@ -101,6 +120,7 @@ def main_menu():
         InlineKeyboardButton(f"{STICKERS['buy']} Buy", callback_data="buy"),
         InlineKeyboardButton(f"{STICKERS['key']} My Keys", callback_data="mykeys"),
         InlineKeyboardButton(f"{STICKERS['stock']} Stock", callback_data="stock"),
+        InlineKeyboardButton(f"{STICKERS['setup']} Setup", callback_data="setup_menu"),
         InlineKeyboardButton(f"{STICKERS['support']} Support", callback_data="help"),
     )
     return kb
@@ -128,6 +148,8 @@ def plans_kb(product):
     kb.add(InlineKeyboardButton(day_btn, callback_data=f"plan_{product}_day"))
     kb.add(InlineKeyboardButton(week_btn, callback_data=f"plan_{product}_week"))
     kb.add(InlineKeyboardButton(month_btn, callback_data=f"plan_{product}_month"))
+    # Add Setup button inside product page
+    kb.add(InlineKeyboardButton(f"{STICKERS['setup']} Setup Guide", callback_data=f"setup_{product}"))
     kb.add(InlineKeyboardButton("◀️ Back", callback_data="back"))
     return kb
 
@@ -143,6 +165,13 @@ def admin_kb(order_id, uid):
     kb.add(InlineKeyboardButton("❌ Reject", callback_data=f"no_{order_id}_{uid}"))
     return kb
 
+def setup_all_products_kb():
+    kb = InlineKeyboardMarkup(row_width=2)
+    for key, p in PRODUCTS.items():
+        kb.add(InlineKeyboardButton(f"{p['emoji']} {p['name']}", callback_data=f"setup_{key}"))
+    kb.add(InlineKeyboardButton("◀️ Back", callback_data="back"))
+    return kb
+
 # ========== BOT HANDLERS ==========
 @bot.message_handler(commands=['start'])
 def start(msg):
@@ -153,6 +182,7 @@ Hello {msg.from_user.first_name}!
 💎 Trusted License Shop
 ⚡ Instant Delivery
 🛡️ 100% Genuine
+🎥 Setup guides included!
 
 👇 Choose option
 """
@@ -192,14 +222,44 @@ def handle(call):
         else:
             text = f"{STICKERS['key']} *Your Keys*\n\n"
             for k in keys[-5:][::-1]:
-                text += f"📦 {k['product']} ({k['duration']})\n🔑 `{k['key']}`\n📅 {k['date']}\n\n"
+                # Add setup link for each purchased product
+                product_id = k['product'].lower().replace(" ", "")
+                # Map product name to ID (simple mapping)
+                prod_key = None
+                for pk, pdata in PRODUCTS.items():
+                    if pdata['name'].lower() == k['product'].lower():
+                        prod_key = pk
+                        break
+                text += f"📦 {k['product']} ({k['duration']})\n🔑 `{k['key']}`\n📅 {k['date']}\n"
+                if prod_key and prod_key in SETUP_VIDEOS:
+                    text += f"🎥 [Setup Guide]({SETUP_VIDEOS[prod_key]})\n"
+                text += "\n"
             bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=main_menu())
+    
+    elif data == "setup_menu":
+        text = f"{STICKERS['setup']} *Setup Guides*\n\nSelect a product to view its setup tutorial:"
+        bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=setup_all_products_kb())
+    
+    elif data.startswith("setup_"):
+        product = data.split("_")[1]
+        if product in SETUP_VIDEOS:
+            text = f"🎥 *{PRODUCTS[product]['name']} Setup Guide*\n\n"
+            text += f"📹 *Video Tutorial:*\n{SETUP_VIDEOS[product]}\n\n"
+            text += f"📝 *Step-by-Step:*\n{SETUP_TEXT.get(product, 'Follow the video instructions.')}\n\n"
+            text += "💡 *Need help?* Contact @ReddyHack"
+            kb = InlineKeyboardMarkup()
+            kb.add(InlineKeyboardButton("◀️ Back to Setup Menu", callback_data="setup_menu"))
+            kb.add(InlineKeyboardButton("🏠 Main Menu", callback_data="back"))
+            bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=kb)
+        else:
+            bot.answer_callback_query(call.id, "Setup guide coming soon!", show_alert=True)
     
     elif data == "help":
         kb = InlineKeyboardMarkup()
         kb.add(InlineKeyboardButton("📞 Contact", url="https://t.me/ReddyHack"))
+        kb.add(InlineKeyboardButton("🎥 Setup Guides", callback_data="setup_menu"))
         kb.add(InlineKeyboardButton("◀️ Back", callback_data="back"))
-        text = f"{STICKERS['support']} *Support*\n\n📞 @ReddyHack\n24/7 Available"
+        text = f"{STICKERS['support']} *Support*\n\n📞 @ReddyHack\n24/7 Available\n\nAlso check our setup guides for help."
         bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=kb)
     
     elif data.startswith("prod_"):
@@ -209,7 +269,7 @@ def handle(call):
         text += f"🟢 1 Day - ₹{PRICES[product]['day']}\n"
         text += f"🟡 7 Days - ₹{PRICES[product]['week']}\n"
         text += f"🔴 30 Days - ₹{PRICES[product]['month']}\n\n"
-        text += "✅ Choose your plan 👇"
+        text += "✅ Choose your plan or view Setup Guide 👇"
         bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=plans_kb(product))
     
     elif data.startswith("plan_"):
@@ -286,6 +346,8 @@ def handle(call):
             "duration": o['duration'], "amount": o['amount'], "key": key,
             "date": datetime.datetime.now().strftime("%d %b %Y %I:%M %p")
         })
+        # Include setup link in delivery message
+        setup_link = SETUP_VIDEOS.get(o['product'], "https://t.me/ReddyHack")
         user_msg = f"""{STICKERS['success']} *PAYMENT VERIFIED* {STICKERS['success']}
 
 🎉 Congratulations!
@@ -301,6 +363,8 @@ def handle(call):
 2️⃣ Open {PRODUCTS[o['product']]['name']}
 3️⃣ Activate
 4️⃣ Enjoy! 🚀
+
+🎥 *Need setup help?* [Watch Tutorial]({setup_link})
 
 ⚠️ Keep private, do not share.
 
@@ -338,7 +402,7 @@ def expire(order_id, cid):
         except:
             pass
 
-# ========== FLASK WEBHOOK ==========
+# ========== FLASK WEBHOOK (unchanged) ==========
 @app.route('/')
 def home():
     return jsonify({"status": "online"})
@@ -426,7 +490,7 @@ def webhook():
     return '', 403
 
 if __name__ == "__main__":
-    print("🤖 REDDY BOT STARTING...")
+    print("🤖 REDDY BOT - SETUP GUIDES ADDED")
     bot.remove_webhook()
     url = os.environ.get('RENDER_EXTERNAL_URL', 'https://reddy-bot.onrender.com')
     bot.set_webhook(f"{url}/webhook")
