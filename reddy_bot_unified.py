@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-👑 REDDY PREMIUM BOT - PERSISTENT STORAGE WITH MONGODB
+REDDY PREMIUM BOT - FILE BASED STORAGE (NO MONGODB)
 """
 
 import telebot
@@ -13,48 +13,43 @@ import time
 import io
 import qrcode
 import os
+import json
 from flask import Flask, request, jsonify, send_from_directory
-from pymongo import MongoClient
-from bson.objectid import ObjectId
 
 # ========== CONFIG ==========
 BOT_TOKEN = "8646356913:AAHqS40oeDQQPZRik2GYcE0nAjyQfdo5QVo"
 ADMIN_ID = "1648621649"
+DATA_FILE = "bot_data.json"
 
-# 🔴 REPLACE WITH YOUR MONGODB CONNECTION STRING 🔴
-MONGO_URI = "mongodb+srv://YOUR_USERNAME:YOUR_PASSWORD@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority"
-DB_NAME = "reddy_premium"
+app = Flask(__name__)
+bot = telebot.TeleBot(BOT_TOKEN)
+pending_orders = {}
 
-client = MongoClient(MONGO_URI)
-db = client[DB_NAME]
-
-# Collections
-products_col = db["products"]
-keys_col = db["keys"]
-users_col = db["users"]
-orders_col = db["orders"]
-stats_col = db["stats"]
-
-# Initialize default data
-if products_col.count_documents({}) == 0:
-    default_products = {
-        "deadeye": {"name": "Deadeye", "emoji": "🎯"},
-        "vision": {"name": "Vision", "emoji": "👁️"},
-        "rage": {"name": "Rage", "emoji": "⚡"},
-        "winios": {"name": "WinIOS", "emoji": "💻"},
-        "kingios": {"name": "KingIOS", "emoji": "👑"},
+# Load data from file
+def load_data():
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "r") as f:
+            return json.load(f)
+    return {
+        "users": {},
+        "orders": [],
+        "keys": {p: {"day": [], "week": [], "month": []} for p in ["deadeye","vision","rage","winios","kingios"]}
     }
-    for pid, p in default_products.items():
-        products_col.insert_one({"_id": pid, **p})
 
-if keys_col.count_documents({}) == 0:
-    for pid in ["deadeye","vision","rage","winios","kingios"]:
-        keys_col.insert_one({"_id": pid, "day": [], "week": [], "month": []})
+def save_data(data):
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f, indent=2)
 
-if stats_col.count_documents({}) == 0:
-    stats_col.insert_one({"_id": "stats", "total_revenue": 0, "total_orders": 0})
+data = load_data()
 
-# Prices (static, can be moved to DB if needed)
+PRODUCTS = {
+    "deadeye": {"name": "Deadeye", "emoji": "🎯"},
+    "vision": {"name": "Vision", "emoji": "👁️"},
+    "rage": {"name": "Rage", "emoji": "⚡"},
+    "winios": {"name": "WinIOS", "emoji": "💻"},
+    "kingios": {"name": "KingIOS", "emoji": "👑"},
+}
+
 PRICES = {
     "deadeye": {"day": 149, "week": 699, "month": 1299},
     "vision": {"day": 199, "week": 699, "month": 2200},
@@ -98,68 +93,53 @@ STICKERS = {
     "setup": "🎥📺",
 }
 
-PRODUCTS = {doc["_id"]: {"name": doc["name"], "emoji": doc["emoji"]} for doc in products_col.find()}
-
-# Helper functions using MongoDB
+# Helper functions using file storage
 def get_stock(product, duration):
-    doc = keys_col.find_one({"_id": product})
-    if doc:
-        return len(doc.get(duration, []))
-    return 0
+    return len(data["keys"].get(product, {}).get(duration, []))
 
 def pop_key(product, duration):
-    doc = keys_col.find_one({"_id": product})
-    if not doc:
-        return None
-    pool = doc.get(duration, [])
+    pool = data["keys"].get(product, {}).get(duration, [])
     if pool:
         key = pool.pop(0)
-        keys_col.update_one({"_id": product}, {"$set": {duration: pool}})
+        save_data(data)
         return key
     return None
 
 def add_keys_to_db(product, duration, key_list):
-    doc = keys_col.find_one({"_id": product})
-    if not doc:
-        keys_col.insert_one({"_id": product, "day": [], "week": [], "month": []})
-        doc = keys_col.find_one({"_id": product})
-    current = doc.get(duration, [])
-    current.extend(key_list)
-    keys_col.update_one({"_id": product}, {"$set": {duration: current}})
+    if product not in data["keys"]:
+        data["keys"][product] = {"day": [], "week": [], "month": []}
+    data["keys"][product][duration].extend(key_list)
+    save_data(data)
 
 def save_user_key(user_id, username, product_name, duration, key):
     uid = str(user_id)
-    user_doc = users_col.find_one({"_id": uid})
-    if not user_doc:
-        users_col.insert_one({"_id": uid, "username": username, "keys": []})
-        user_doc = users_col.find_one({"_id": uid})
-    keys_list = user_doc.get("keys", [])
-    keys_list.append({
+    if uid not in data["users"]:
+        data["users"][uid] = {"username": username, "keys": []}
+    data["users"][uid]["keys"].append({
         "product": product_name,
         "duration": duration,
         "key": key,
         "date": datetime.datetime.now().strftime("%d %b %Y %I:%M %p")
     })
-    users_col.update_one({"_id": uid}, {"$set": {"keys": keys_list, "username": username}})
+    save_data(data)
 
 def save_order(order_data):
-    orders_col.insert_one(order_data)
-    stats_col.update_one({"_id": "stats"}, {"$inc": {"total_orders": 1, "total_revenue": order_data.get("amount", 0)}})
+    data["orders"].insert(0, order_data)
+    save_data(data)
 
 def get_all_keys():
-    return {doc["_id"]: {"day": doc.get("day",[]), "week": doc.get("week",[]), "month": doc.get("month",[])} for doc in keys_col.find()}
+    return data["keys"]
 
 def get_all_users():
-    return {doc["_id"]: {"username": doc.get("username",""), "keys": doc.get("keys",[])} for doc in users_col.find()}
+    return data["users"]
 
 def get_all_orders():
-    return list(orders_col.find().sort("_id", -1))
+    return data["orders"]
 
 def get_stats():
-    stat = stats_col.find_one({"_id": "stats"})
-    if not stat:
-        return {"total_orders": 0, "total_revenue": 0}
-    return stat
+    total_orders = len(data["orders"])
+    total_revenue = sum(o.get("amount", 0) for o in data["orders"])
+    return {"total_orders": total_orders, "total_revenue": total_revenue}
 
 def make_qr(amount, order_id):
     upi = f"upi://pay?pa=q542401897@ybl&pn=Reddy+Premium&am={amount}&tn={order_id}&cu=INR"
@@ -172,7 +152,7 @@ def make_qr(amount, order_id):
     buf.seek(0)
     return buf
 
-# ========== KEYBOARDS (unchanged) ==========
+# ========== KEYBOARDS (same as before) ==========
 def main_menu():
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
@@ -230,11 +210,7 @@ def setup_all_products_kb():
     kb.add(InlineKeyboardButton("◀️ Back", callback_data="back"))
     return kb
 
-# ========== BOT HANDLERS ==========
-app = Flask(__name__)
-bot = telebot.TeleBot(BOT_TOKEN)
-pending_orders = {}
-
+# ========== BOT HANDLERS (same logic, uses file storage) ==========
 @bot.message_handler(commands=['start'])
 def start(msg):
     text = f"""{STICKERS['welcome']} *REDDY PREMIUM* {STICKERS['welcome']}
@@ -255,15 +231,15 @@ def handle(call):
     cid = call.message.chat.id
     uid = call.from_user.id
     uname = call.from_user.username or "User"
-    data = call.data
+    data_cb = call.data
 
-    if data == "back":
+    if data_cb == "back":
         bot.edit_message_text("👇 *Main Menu*", cid, call.message.id, parse_mode="Markdown", reply_markup=main_menu())
     
-    elif data == "buy":
+    elif data_cb == "buy":
         bot.edit_message_text(f"{STICKERS['buy']} *Select Product*", cid, call.message.id, parse_mode="Markdown", reply_markup=products_kb())
     
-    elif data == "stock":
+    elif data_cb == "stock":
         text = f"{STICKERS['stock']} *Stock Available*\n\n"
         for key, p in PRODUCTS.items():
             d = get_stock(key, "day")
@@ -275,16 +251,15 @@ def handle(call):
                 text += f"{p['emoji']} *{p['name']}* - 🔴 Out of Stock\n\n"
         bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=main_menu())
     
-    elif data == "mykeys":
+    elif data_cb == "mykeys":
         uid_str = str(uid)
-        user_doc = users_col.find_one({"_id": uid_str})
-        keys = user_doc.get("keys", []) if user_doc else []
-        if not keys:
+        user_keys = data["users"].get(uid_str, {}).get("keys", [])
+        if not user_keys:
             text = f"{STICKERS['key']} *My Keys*\n\nYou have no keys yet.\nUse Buy option."
             bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=main_menu())
         else:
             text = f"{STICKERS['key']} *Your Keys*\n\n"
-            for k in keys[-5:][::-1]:
+            for k in user_keys[-5:][::-1]:
                 # find product id for setup link
                 prod_key = None
                 for pid, pdata in PRODUCTS.items():
@@ -297,12 +272,12 @@ def handle(call):
                 text += "\n"
             bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=main_menu())
     
-    elif data == "setup_menu":
+    elif data_cb == "setup_menu":
         text = f"{STICKERS['setup']} *Setup Guides*\n\nSelect a product to view its setup tutorial:"
         bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=setup_all_products_kb())
     
-    elif data.startswith("setup_"):
-        product = data.split("_")[1]
+    elif data_cb.startswith("setup_"):
+        product = data_cb.split("_")[1]
         if product in SETUP_VIDEOS:
             text = f"🎥 *{PRODUCTS[product]['name']} Setup Guide*\n\n"
             text += f"📹 *Video Tutorial:*\n{SETUP_VIDEOS[product]}\n\n"
@@ -315,7 +290,7 @@ def handle(call):
         else:
             bot.answer_callback_query(call.id, "Setup guide coming soon!", show_alert=True)
     
-    elif data == "help":
+    elif data_cb == "help":
         kb = InlineKeyboardMarkup()
         kb.add(InlineKeyboardButton("📞 Contact", url="https://t.me/ReddyHack"))
         kb.add(InlineKeyboardButton("🎥 Setup Guides", callback_data="setup_menu"))
@@ -323,8 +298,8 @@ def handle(call):
         text = f"{STICKERS['support']} *Support*\n\n📞 @ReddyHack\n24/7 Available\n\nAlso check our setup guides for help."
         bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=kb)
     
-    elif data.startswith("prod_"):
-        product = data.split("_")[1]
+    elif data_cb.startswith("prod_"):
+        product = data_cb.split("_")[1]
         p = PRODUCTS[product]
         text = f"{p['emoji']} *{p['name']}*\n\n💰 *Prices*\n"
         text += f"🟢 1 Day - ₹{PRICES[product]['day']}\n"
@@ -333,8 +308,8 @@ def handle(call):
         text += "✅ Choose your plan or view Setup Guide 👇"
         bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=plans_kb(product))
     
-    elif data.startswith("plan_"):
-        _, product, duration = data.split("_")
+    elif data_cb.startswith("plan_"):
+        _, product, duration = data_cb.split("_")
         if get_stock(product, duration) == 0:
             bot.answer_callback_query(call.id, "❌ Sold out! Choose another.", show_alert=True)
             return
@@ -365,8 +340,8 @@ def handle(call):
         bot.send_photo(cid, qr, caption=caption, parse_mode="Markdown", reply_markup=pay_kb(order_id))
         threading.Timer(900, lambda: expire(order_id, cid)).start()
     
-    elif data.startswith("paid_"):
-        order_id = data.split("_")[1]
+    elif data_cb.startswith("paid_"):
+        order_id = data_cb.split("_")[1]
         if order_id not in pending_orders:
             bot.answer_callback_query(call.id, "Expired!")
             return
@@ -383,8 +358,8 @@ def handle(call):
 ✅ Verify & Approve"""
         bot.send_message(ADMIN_ID, admin_msg, parse_mode="Markdown", reply_markup=admin_kb(order_id, cid))
     
-    elif data.startswith("ok_"):
-        parts = data.split("_")
+    elif data_cb.startswith("ok_"):
+        parts = data_cb.split("_")
         order_id = parts[1]
         user_cid = int(parts[2])
         if str(uid) != ADMIN_ID:
@@ -434,8 +409,8 @@ def handle(call):
         del pending_orders[order_id]
         bot.edit_message_reply_markup(cid, call.message.id, reply_markup=None)
     
-    elif data.startswith("no_"):
-        parts = data.split("_")
+    elif data_cb.startswith("no_"):
+        parts = data_cb.split("_")
         order_id = parts[1]
         user_cid = int(parts[2])
         if str(uid) != ADMIN_ID:
@@ -447,8 +422,8 @@ def handle(call):
             del pending_orders[order_id]
         bot.edit_message_reply_markup(cid, call.message.id, reply_markup=None)
     
-    elif data.startswith("cancel_"):
-        order_id = data.split("_")[1]
+    elif data_cb.startswith("cancel_"):
+        order_id = data_cb.split("_")[1]
         if order_id in pending_orders:
             del pending_orders[order_id]
         bot.edit_message_caption(cid, call.message.id, caption="❌ Cancelled", reply_markup=None)
@@ -462,10 +437,10 @@ def expire(order_id, cid):
         except:
             pass
 
-# ========== FLASK API FOR ADMIN PANEL (using MongoDB) ==========
+# ========== FLASK API FOR ADMIN PANEL ==========
 @app.route('/')
 def home():
-    return jsonify({"status": "online", "database": "MongoDB"})
+    return jsonify({"status": "online", "storage": "file"})
 
 @app.route('/admin')
 def admin():
@@ -478,7 +453,7 @@ def dashboard():
     return jsonify({
         "total_keys": total_keys,
         "total_orders": stats["total_orders"],
-        "total_users": users_col.count_documents({}),
+        "total_users": len(data["users"]),
         "total_revenue": stats["total_revenue"]
     })
 
@@ -488,25 +463,24 @@ def keys_all():
 
 @app.route('/api/keys/<product>/<duration>')
 def get_keys(product, duration):
-    doc = keys_col.find_one({"_id": product})
-    keys = doc.get(duration, []) if doc else []
+    keys = data["keys"].get(product, {}).get(duration, [])
     return jsonify({"keys": keys})
 
 @app.route('/api/keys', methods=['POST'])
 def add_keys():
-    data = request.json
-    product = data['product']
-    duration = data['duration']
-    key_list = data['keys']
+    body = request.json
+    product = body['product']
+    duration = body['duration']
+    key_list = body['keys']
     add_keys_to_db(product, duration, key_list)
     return jsonify({"ok": True})
 
 @app.route('/api/keys/generate', methods=['POST'])
 def gen_keys():
-    data = request.json
-    product = data['product']
-    duration = data['duration']
-    count = data['count']
+    body = request.json
+    product = body['product']
+    duration = body['duration']
+    count = body['count']
     prefix = PREFIX.get(product, "KEY")
     def g():
         return f"{prefix}-{''.join(random.choices('ABCDEFGHJKLMNPQRSTUVWXYZ0123456789',k=4))}-{''.join(random.choices('ABCDEFGHJKLMNPQRSTUVWXYZ0123456789',k=4))}-{''.join(random.choices('ABCDEFGHJKLMNPQRSTUVWXYZ0123456789',k=4))}"
@@ -516,7 +490,9 @@ def gen_keys():
 
 @app.route('/api/keys/<product>/<duration>', methods=['DELETE'])
 def clear_keys(product, duration):
-    keys_col.update_one({"_id": product}, {"$set": {duration: []}})
+    if product in data["keys"]:
+        data["keys"][product][duration] = []
+        save_data(data)
     return jsonify({"ok": True})
 
 @app.route('/api/prices')
@@ -525,8 +501,8 @@ def get_prices():
 
 @app.route('/api/prices', methods=['POST'])
 def set_prices():
-    data = request.json
-    PRICES[data['product']] = data['prices']
+    body = request.json
+    PRICES[body['product']] = body['prices']
     return jsonify({"ok": True})
 
 @app.route('/api/orders')
@@ -535,8 +511,8 @@ def get_orders():
 
 @app.route('/api/orders', methods=['DELETE'])
 def del_orders():
-    orders_col.delete_many({})
-    stats_col.update_one({"_id": "stats"}, {"$set": {"total_orders": 0, "total_revenue": 0}})
+    data["orders"] = []
+    save_data(data)
     return jsonify({"ok": True})
 
 @app.route('/api/users')
@@ -557,7 +533,7 @@ def webhook():
     return '', 403
 
 if __name__ == "__main__":
-    print("🤖 REDDY BOT - MONGODB PERSISTENT STORAGE")
+    print("🤖 REDDY BOT - FILE STORAGE (NO MONGO)")
     bot.remove_webhook()
     url = os.environ.get('RENDER_EXTERNAL_URL', 'https://reddy-bot.onrender.com')
     bot.set_webhook(f"{url}/webhook")
