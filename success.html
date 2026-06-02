@@ -5,19 +5,43 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-        body { background: #0a0a0f; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; color: white; text-align: center; }
-        .container { background: #12121a; padding: 40px; border-radius: 20px; border: 1px solid #2a2a3d; }
+        body {
+            background: #0a0a0f;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            color: white;
+            text-align: center;
+        }
+        .container {
+            background: #12121a;
+            padding: 40px;
+            border-radius: 20px;
+            border: 1px solid #2a2a3d;
+            max-width: 400px;
+        }
         h2 { color: #10b981; }
         p { color: #94a3b8; margin: 20px 0; }
-        .btn { background: #7c3aed; color: white; padding: 10px 20px; border-radius: 30px; text-decoration: none; display: inline-block; }
+        .btn {
+            background: #7c3aed;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 30px;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn:hover { opacity: 0.9; }
     </style>
 </head>
 <body>
     <div class="container">
         <h2>✅ Payment Successful!</h2>
         <p>Your payment has been received. Please return to Telegram.</p>
-        <a href="https://t.me/YOUR_BOT_USERNAME" class="btn">📱 Open Telegram Bot</a>
-        <p style="font-size: 12px; margin-top: 20px;">You will receive your key shortly.</p>
+        <a href="https://t.me/YourBotUsername" class="btn">📱 Open Telegram Bot</a>
+        <p style="font-size: 12px; margin-top: 20px;">You will receive your license key shortly.</p>
     </div>
 </body>
 </html>
