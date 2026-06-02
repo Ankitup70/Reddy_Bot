@@ -1,13 +1,6 @@
 #!/usr/bin/env python3
 """
-👑 REDDY PREMIUM BOT – FULLY IMPROVED (NO SETUP OPTION)
-- Razorpay Auto Payment
-- Stock Display + Low Stock Alerts
-- Auto Key Generation on Low Stock
-- Daily Sales Report
-- Colorful Buttons
-- Professional Invoice
-- Duplicate Webhook Protection
+👑 REDDY PREMIUM BOT – NO DOUBLE PRICE (SIRF BUTTON MEIN PRICE)
 """
 
 import telebot
@@ -32,7 +25,6 @@ BOT_TOKEN = "8646356913:AAHqS40oeDQQPZRik2GYcE0nAjyQfdo5QVo"
 ADMIN_ID = "1648621649"
 DATA_FILE = "bot_data.json"
 
-# Razorpay Credentials (Replace with your own)
 RAZORPAY_KEY_ID = "rzp_test_Swf7omML9UnAHQ"
 RAZORPAY_KEY_SECRET = "70nCcG6l2fOXSijMSDB7UFuU"
 RAZORPAY_WEBHOOK_SECRET = "MyRzpWebhookSecret@2024"
@@ -99,7 +91,7 @@ def pop_key(product, duration):
         save_data(data)
         remaining = len(pool)
         if remaining <= 5:
-            bot.send_message(ADMIN_ID, f"⚠️ *Low Stock Alert!*\n\n{PRODUCTS[product]['name']} - {duration}\nOnly {remaining} keys left.\nPlease add new keys.", parse_mode="Markdown")
+            bot.send_message(ADMIN_ID, f"⚠️ *Low Stock Alert!*\n\n{PRODUCTS[product]['name']} - {duration}\nOnly {remaining} keys left.", parse_mode="Markdown")
             if remaining < 3:
                 auto_refill_stock(product, duration)
         return key
@@ -202,7 +194,6 @@ def deliver_key_from_razorpay(order_id, payment_details):
         "date": datetime.datetime.now().strftime("%d %b %Y %I:%M %p"),
         "payment_id": payment_details.get('payment_id', '')
     })
-    # Invoice
     invoice = f"""🧾 *REDDY PREMIUM INVOICE*
 ━━━━━━━━━━━━━━━━━━━━━━
 Order ID: `{order_id}`
@@ -237,7 +228,7 @@ Thank you for choosing Reddy Premium!"""
     del pending_orders[order_id]
     return True
 
-# ========== TELEGRAM KEYBOARDS (NO SETUP) ==========
+# ========== TELEGRAM KEYBOARDS ==========
 def main_menu():
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
@@ -281,12 +272,6 @@ def plans_kb(product):
 def pay_kb(order_id):
     kb = InlineKeyboardMarkup()
     kb.add(InlineKeyboardButton("❌ Cancel", callback_data=f"cancel_{order_id}", style='danger'))
-    return kb
-
-def admin_kb(order_id, uid):
-    kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton("✅ Approve", callback_data=f"ok_{order_id}_{uid}", style='success'))
-    kb.add(InlineKeyboardButton("❌ Reject", callback_data=f"no_{order_id}_{uid}", style='danger'))
     return kb
 
 # ========== BOT HANDLERS ==========
@@ -351,11 +336,8 @@ def handle(call):
     elif data_cb.startswith("prod_"):
         product = data_cb.split("_")[1]
         p = PRODUCTS[product]
-        text = f"{p['emoji']} *{p['name']}*\n\n💰 *Prices*\n"
-        text += f"🟢 1 Day - ₹{PRICES[product]['day']}\n"
-        text += f"🟡 7 Days - ₹{PRICES[product]['week']}\n"
-        text += f"🔴 30 Days - ₹{PRICES[product]['month']}\n\n"
-        text += "✅ Choose your plan 👇"
+        # 🔥 DOUBLE PRICE HATAYA – SIRF NAME AUR "CHOOSE YOUR PLAN"
+        text = f"{p['emoji']} *{p['name']}*\n\n👇 *Choose your plan*"
         bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=plans_kb(product))
     
     elif data_cb.startswith("plan_"):
@@ -425,10 +407,8 @@ def razorpay_webhook():
     if webhook_data.get('event') == 'payment.captured':
         payment = webhook_data.get('payload', {}).get('payment', {}).get('entity', {})
         rzp_order_id = payment.get('order_id')
-        # Check duplicate
         if rzp_order_id in processed_payments:
             return jsonify({"status": "already_processed"}), 200
-        # Find internal order
         internal_id = None
         for oid, od in pending_orders.items():
             if od.get('razorpay_order_id') == rzp_order_id:
@@ -455,7 +435,6 @@ def run_scheduler():
         schedule.run_pending()
         time.sleep(60)
 
-# Start scheduler thread
 threading.Thread(target=run_scheduler, daemon=True).start()
 
 # ========== FLASK API FOR ADMIN PANEL ==========
@@ -555,7 +534,7 @@ def webhook():
 
 if __name__ == "__main__":
     print("=" * 50)
-    print("🤖 REDDY BOT - SETUP REMOVED")
+    print("🤖 REDDY BOT – DOUBLE PRICE REMOVED")
     print("=" * 50)
     bot.remove_webhook()
     url = os.environ.get('RENDER_EXTERNAL_URL', 'https://reddy-bot.onrender.com')
