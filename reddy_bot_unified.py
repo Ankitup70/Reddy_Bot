@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-👑 REDDY PREMIUM BOT – RAZORPAY CUSTOM CHECKOUT (FULLY WORKING)
+👑 REDDY PREMIUM BOT – RAZORPAY FIXED
 """
 
 import telebot
@@ -25,7 +25,7 @@ BOT_TOKEN = "8646356913:AAHqS40oeDQQPZRik2GYcE0nAjyQfdo5QVo"
 ADMIN_ID = "1648621649"
 DATA_FILE = "bot_data.json"
 
-# Razorpay Credentials (REPLACE WITH YOUR OWN)
+# Razorpay Credentials (Replace with your own if different)
 RAZORPAY_KEY_ID = "rzp_test_Swf7omML9UnAHQ"
 RAZORPAY_KEY_SECRET = "70nCcG6l2fOXSijMSDB7UFuU"
 RAZORPAY_WEBHOOK_SECRET = "MyRzpWebhookSecret@2024"
@@ -157,7 +157,7 @@ def verify_webhook_signature(body, signature):
     except:
         return False
 
-def deliver_key_from_razorpay(order_id, payment_details):
+def deliver_key(order_id, payment_id):
     if order_id not in pending_orders:
         return False
     o = pending_orders[order_id]
@@ -175,7 +175,7 @@ def deliver_key_from_razorpay(order_id, payment_details):
         "amount": o['amount'],
         "key": key,
         "date": datetime.datetime.now().strftime("%d %b %Y %I:%M %p"),
-        "payment_id": payment_details.get('payment_id', '')
+        "payment_id": payment_id
     })
     invoice = f"""🧾 *REDDY PREMIUM INVOICE*
 ━━━━━━━━━━━━━━━━━━━━━━
@@ -326,14 +326,15 @@ def handle(call):
         amount = PRICES[product][duration]
         order_id = f"R{int(time.time())}{random.randint(10,99)}"
         
-        app_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://reddy-bot.onrender.com')
-        payment_url = f"{app_url}/payment?order_id={order_id}&amount={amount}&product={PRODUCTS[product]['name']}"
-        
+        # Store pending order
         pending_orders[order_id] = {
             "user_id": uid, "username": uname,
             "product": product, "duration": duration,
             "amount": amount, "chat_id": cid
         }
+        
+        app_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://reddy-bot.onrender.com')
+        payment_url = f"{app_url}/payment?order_id={order_id}&amount={amount}&product={PRODUCTS[product]['name']}"
         
         caption = f"""💳 *REDDY PREMIUM PAYMENT*
 
@@ -371,7 +372,7 @@ def expire(order_id, cid):
         except:
             pass
 
-# ========== FLASK ROUTES (CUSTOM CHECKOUT) ==========
+# ========== FLASK ROUTES ==========
 @app.route('/')
 def home():
     return jsonify({"status": "online", "payment": "razorpay"})
@@ -395,10 +396,13 @@ def create_razorpay_order():
     product = request.args.get('product')
     
     if not order_id or not amount:
-        return jsonify({"error": "Missing parameters"}), 400
+        return jsonify({"error": "Missing order_id or amount"}), 400
     
     try:
         amount_paise = int(float(amount) * 100)
+        if amount_paise <= 0:
+            return jsonify({"error": "Invalid amount"}), 400
+        
         razorpay_order = razorpay_client.order.create({
             'amount': amount_paise,
             'currency': 'INR',
@@ -409,39 +413,48 @@ def create_razorpay_order():
             },
             'payment_capture': 1
         })
+        # Store Razorpay order ID in pending_orders for webhook matching
+        if order_id in pending_orders:
+            pending_orders[order_id]['razorpay_order_id'] = razorpay_order['id']
         return jsonify({
             'id': razorpay_order['id'],
             'amount': amount_paise
         })
     except Exception as e:
-        print(f"Razorpay order creation error: {e}")
+        print(f"Razorpay order creation error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-# ========== RAZORPAY WEBHOOK ==========
 @app.route('/razorpay_webhook', methods=['POST'])
 def razorpay_webhook():
     signature = request.headers.get('X-Razorpay-Signature')
     if not signature or not verify_webhook_signature(request.get_data(as_text=True), signature):
         return jsonify({"error": "Invalid signature"}), 400
+    
     webhook_data = request.json
     if webhook_data.get('event') == 'payment.captured':
         payment = webhook_data.get('payload', {}).get('payment', {}).get('entity', {})
         rzp_order_id = payment.get('order_id')
         if rzp_order_id in processed_payments:
             return jsonify({"status": "already_processed"}), 200
+        
+        # Find internal order ID
         internal_id = None
         for oid, od in pending_orders.items():
             if od.get('razorpay_order_id') == rzp_order_id:
                 internal_id = oid
                 break
+        
         if internal_id:
-            deliver_key_from_razorpay(internal_id, payment)
+            deliver_key(internal_id, payment.get('id'))
             processed_payments.add(rzp_order_id)
             data["processed_payments"] = list(processed_payments)
             save_data(data)
+        else:
+            print(f"Order not found for Razorpay order: {rzp_order_id}")
+    
     return jsonify({"status": "ok"}), 200
 
-# ========== DAILY REPORT SCHEDULER ==========
+# ========== DAILY REPORT ==========
 def send_daily_report():
     today_str = datetime.datetime.now().strftime("%d %b %Y")
     today_orders = [o for o in data["orders"] if o.get("date", "").startswith(today_str)]
@@ -457,7 +470,7 @@ def run_scheduler():
 
 threading.Thread(target=run_scheduler, daemon=True).start()
 
-# ========== ADMIN PANEL API ==========
+# ========== ADMIN API ==========
 @app.route('/api/dashboard')
 def dashboard():
     stats = get_stats()
@@ -546,7 +559,7 @@ def webhook():
 
 if __name__ == "__main__":
     print("=" * 50)
-    print("🤖 REDDY BOT – CUSTOM CHECKOUT READY")
+    print("🤖 REDDY BOT – RAZORPAY FIXED")
     print("=" * 50)
     bot.remove_webhook()
     url = os.environ.get('RENDER_EXTERNAL_URL', 'https://reddy-bot.onrender.com')
