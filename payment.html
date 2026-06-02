@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Reddy Premium - Payment</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <style>
+        body {
+            background: #0a0a0f;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            padding: 20px;
+            color: white;
+        }
+        .container {
+            text-align: center;
+            background: #12121a;
+            padding: 40px;
+            border-radius: 20px;
+            border: 1px solid #2a2a3d;
+            max-width: 400px;
+            width: 100%;
+        }
+        h2 { color: #fbbf24; margin-bottom: 20px; }
+        p { color: #94a3b8; margin-bottom: 30px; }
+        button {
+            background: #7c3aed;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 30px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+        }
+        button:hover { opacity: 0.9; }
+        .loader {
+            border: 2px solid #2a2a3d;
+            border-top: 2px solid #7c3aed;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+            display: none;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="loader" id="loader"></div>
+        <h2>💰 Reddy Premium</h2>
+        <p id="status">Initializing payment... Please wait.</p>
+        <button id="payButton" style="display: none;">💳 Pay Now</button>
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const orderId = urlParams.get('order_id');
+        const amount = urlParams.get('amount');
+        const product = urlParams.get('product');
+
+        if (!orderId || !amount || !product) {
+            document.getElementById('status').innerHTML = '❌ Invalid request. Please go back and try again.';
+            document.getElementById('loader').style.display = 'none';
+        } else {
+            fetch(`/api/create_razorpay_order?order_id=${orderId}&amount=${amount}&product=${product}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.error) throw new Error(data.error);
+                    document.getElementById('loader').style.display = 'none';
+                    document.getElementById('payButton').style.display = 'block';
+                    document.getElementById('status').innerHTML = `📦 Product: ${product}<br>💰 Amount: ₹${amount}<br><br>Click below to pay securely.`;
+                    
+                    const options = {
+                        key: "YOUR_KEY_ID", // ⚠️ CHANGE THIS: Paste your Razorpay Key ID here
+                        amount: data.amount,
+                        currency: "INR",
+                        name: "Reddy Premium",
+                        description: `Order ${orderId}`,
+                        order_id: data.id,
+                        handler: function(response) {
+                            window.location.href = `/payment_success?order_id=${orderId}&payment_id=${response.razorpay_payment_id}`;
+                        },
+                        prefill: { name: "Customer", email: "customer@example.com", contact: "9999999999" },
+                        theme: { color: "#7c3aed" }
+                    };
+                    const rzp = new Razorpay(options);
+                    document.getElementById('payButton').onclick = function(e) {
+                        rzp.open();
+                        e.preventDefault();
+                    };
+                })
+                .catch(error => {
+                    document.getElementById('status').innerHTML = '❌ Error creating order. Please try again.';
+                    document.getElementById('loader').style.display = 'none';
+                    console.error('Error:', error);
+                });
+        }
+    </script>
+</body>
+</html>
