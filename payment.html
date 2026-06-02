@@ -1,14 +1,14 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Reddy Premium - Payment</title>
+    <title>Reddy Premium - Secure Payment</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
     <style>
         body {
             background: #0a0a0f;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Segoe UI', system-ui, sans-serif;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -18,13 +18,13 @@
             color: white;
         }
         .container {
-            text-align: center;
             background: #12121a;
             padding: 40px;
             border-radius: 20px;
             border: 1px solid #2a2a3d;
             max-width: 400px;
             width: 100%;
+            text-align: center;
         }
         h2 { color: #fbbf24; margin-bottom: 20px; }
         p { color: #94a3b8; margin-bottom: 30px; }
@@ -32,7 +32,7 @@
             background: #7c3aed;
             color: white;
             border: none;
-            padding: 12px 30px;
+            padding: 14px 30px;
             border-radius: 30px;
             font-size: 16px;
             font-weight: bold;
@@ -71,6 +71,9 @@
             document.getElementById('status').innerHTML = '❌ Invalid request. Please go back and try again.';
             document.getElementById('loader').style.display = 'none';
         } else {
+            // Replace YOUR_KEY_ID with your actual Razorpay Key ID
+            const razorpayKey = "rzp_test_Swf7omML9UnAHQ";  // ⚠️ CHANGE THIS TO YOUR LIVE/TEST KEY
+
             fetch(`/api/create_razorpay_order?order_id=${orderId}&amount=${amount}&product=${product}`)
                 .then(res => res.json())
                 .then(data => {
@@ -80,7 +83,7 @@
                     document.getElementById('status').innerHTML = `📦 Product: ${product}<br>💰 Amount: ₹${amount}<br><br>Click below to pay securely.`;
                     
                     const options = {
-                        key: "YOUR_KEY_ID", // ⚠️ CHANGE THIS: Paste your Razorpay Key ID here
+                        key: razorpayKey,
                         amount: data.amount,
                         currency: "INR",
                         name: "Reddy Premium",
@@ -89,7 +92,11 @@
                         handler: function(response) {
                             window.location.href = `/payment_success?order_id=${orderId}&payment_id=${response.razorpay_payment_id}`;
                         },
-                        prefill: { name: "Customer", email: "customer@example.com", contact: "9999999999" },
+                        prefill: {
+                            name: "Customer",
+                            email: "customer@example.com",
+                            contact: "9999999999"
+                        },
                         theme: { color: "#7c3aed" }
                     };
                     const rzp = new Razorpay(options);
