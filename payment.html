@@ -71,8 +71,8 @@
             document.getElementById('status').innerHTML = '❌ Invalid request. Please go back and try again.';
             document.getElementById('loader').style.display = 'none';
         } else {
-            // Replace YOUR_KEY_ID with your actual Razorpay Key ID
-            const razorpayKey = "rzp_test_Swf7omML9UnAHQ";  // ⚠️ CHANGE THIS TO YOUR LIVE/TEST KEY
+            // ⚠️ REPLACE WITH YOUR ACTUAL RAZORPAY KEY ID
+            const razorpayKey = "rzp_test_Swf7omML9UnAHQ";
 
             fetch(`/api/create_razorpay_order?order_id=${orderId}&amount=${amount}&product=${product}`)
                 .then(res => res.json())
