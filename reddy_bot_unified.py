@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-👑 REDDY PREMIUM BOT – NO DOUBLE PRICE (SIRF BUTTON MEIN PRICE)
+👑 REDDY PREMIUM BOT – RAZORPAY CUSTOM CHECKOUT (FULLY WORKING)
 """
 
 import telebot
@@ -25,6 +25,7 @@ BOT_TOKEN = "8646356913:AAHqS40oeDQQPZRik2GYcE0nAjyQfdo5QVo"
 ADMIN_ID = "1648621649"
 DATA_FILE = "bot_data.json"
 
+# Razorpay Credentials (REPLACE WITH YOUR OWN)
 RAZORPAY_KEY_ID = "rzp_test_Swf7omML9UnAHQ"
 RAZORPAY_KEY_SECRET = "70nCcG6l2fOXSijMSDB7UFuU"
 RAZORPAY_WEBHOOK_SECRET = "MyRzpWebhookSecret@2024"
@@ -149,24 +150,6 @@ def get_stats():
     return {"total_orders": total_orders, "total_revenue": total_revenue}
 
 # ========== RAZORPAY HELPERS ==========
-def create_razorpay_order(amount, order_id, product, duration):
-    try:
-        razorpay_order = razorpay_client.order.create({
-            "amount": int(amount * 100),
-            "currency": "INR",
-            "receipt": order_id,
-            "notes": {
-                "product": product,
-                "duration": duration,
-                "bot_order_id": order_id
-            }
-        })
-        payment_link = f"https://rzp.io/l/{razorpay_order['id']}"
-        return payment_link, razorpay_order['id']
-    except Exception as e:
-        print(f"Razorpay error: {e}")
-        return None, None
-
 def verify_webhook_signature(body, signature):
     try:
         expected = hmac.new(RAZORPAY_WEBHOOK_SECRET.encode('utf-8'), body.encode('utf-8'), hashlib.sha256).hexdigest()
@@ -269,11 +252,6 @@ def plans_kb(product):
     kb.add(InlineKeyboardButton("◀️ Back", callback_data="back", style='primary'))
     return kb
 
-def pay_kb(order_id):
-    kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton("❌ Cancel", callback_data=f"cancel_{order_id}", style='danger'))
-    return kb
-
 # ========== BOT HANDLERS ==========
 @bot.message_handler(commands=['start'])
 def start(msg):
@@ -336,7 +314,6 @@ def handle(call):
     elif data_cb.startswith("prod_"):
         product = data_cb.split("_")[1]
         p = PRODUCTS[product]
-        # 🔥 DOUBLE PRICE HATAYA – SIRF NAME AUR "CHOOSE YOUR PLAN"
         text = f"{p['emoji']} *{p['name']}*\n\n👇 *Choose your plan*"
         bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=plans_kb(product))
     
@@ -349,32 +326,29 @@ def handle(call):
         amount = PRICES[product][duration]
         order_id = f"R{int(time.time())}{random.randint(10,99)}"
         
-        payment_link, razorpay_order_id = create_razorpay_order(amount, order_id, product, duration)
-        if not payment_link:
-            bot.answer_callback_query(call.id, "❌ Payment error! Try later.", show_alert=True)
-            return
+        app_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://reddy-bot.onrender.com')
+        payment_url = f"{app_url}/payment?order_id={order_id}&amount={amount}&product={PRODUCTS[product]['name']}"
         
         pending_orders[order_id] = {
             "user_id": uid, "username": uname,
             "product": product, "duration": duration,
-            "amount": amount, "chat_id": cid,
-            "razorpay_order_id": razorpay_order_id
+            "amount": amount, "chat_id": cid
         }
         
-        caption = f"""💳 *RAZORPAY PAYMENT*
+        caption = f"""💳 *REDDY PREMIUM PAYMENT*
 
 🆔 Order: `{order_id}`
 📦 {PRODUCTS[product]['name']}
 ⏱️ {duration}
 💰 ₹{amount}
 
-👉 [PAY NOW]({payment_link})
+👉 [Click here to pay]({payment_url})
 
 ✅ After payment, key will be sent automatically.
-⏳ Complete within 15 minutes."""
+⏳ Link valid for 15 minutes."""
         
         kb = InlineKeyboardMarkup()
-        kb.add(InlineKeyboardButton("💳 PAY NOW", url=payment_link))
+        kb.add(InlineKeyboardButton("💳 PAY NOW", url=payment_url))
         kb.add(InlineKeyboardButton("❌ Cancel", callback_data=f"cancel_{order_id}", style='danger'))
         
         bot.delete_message(cid, call.message.id)
@@ -396,6 +370,52 @@ def expire(order_id, cid):
             bot.send_message(cid, "⌛ *Order expired*\nPlease start fresh.", parse_mode="Markdown", reply_markup=main_menu())
         except:
             pass
+
+# ========== FLASK ROUTES (CUSTOM CHECKOUT) ==========
+@app.route('/')
+def home():
+    return jsonify({"status": "online", "payment": "razorpay"})
+
+@app.route('/admin')
+def admin():
+    return send_from_directory('.', 'admin_panel.html')
+
+@app.route('/payment')
+def payment_page():
+    return send_from_directory('.', 'payment.html')
+
+@app.route('/payment_success')
+def payment_success():
+    return send_from_directory('.', 'success.html')
+
+@app.route('/api/create_razorpay_order', methods=['GET'])
+def create_razorpay_order():
+    order_id = request.args.get('order_id')
+    amount = request.args.get('amount')
+    product = request.args.get('product')
+    
+    if not order_id or not amount:
+        return jsonify({"error": "Missing parameters"}), 400
+    
+    try:
+        amount_paise = int(float(amount) * 100)
+        razorpay_order = razorpay_client.order.create({
+            'amount': amount_paise,
+            'currency': 'INR',
+            'receipt': order_id,
+            'notes': {
+                'product': product,
+                'bot_order_id': order_id
+            },
+            'payment_capture': 1
+        })
+        return jsonify({
+            'id': razorpay_order['id'],
+            'amount': amount_paise
+        })
+    except Exception as e:
+        print(f"Razorpay order creation error: {e}")
+        return jsonify({"error": str(e)}), 500
 
 # ========== RAZORPAY WEBHOOK ==========
 @app.route('/razorpay_webhook', methods=['POST'])
@@ -437,15 +457,7 @@ def run_scheduler():
 
 threading.Thread(target=run_scheduler, daemon=True).start()
 
-# ========== FLASK API FOR ADMIN PANEL ==========
-@app.route('/')
-def home():
-    return jsonify({"status": "online", "payment": "razorpay"})
-
-@app.route('/admin')
-def admin():
-    return send_from_directory('.', 'admin_panel.html')
-
+# ========== ADMIN PANEL API ==========
 @app.route('/api/dashboard')
 def dashboard():
     stats = get_stats()
@@ -534,7 +546,7 @@ def webhook():
 
 if __name__ == "__main__":
     print("=" * 50)
-    print("🤖 REDDY BOT – DOUBLE PRICE REMOVED")
+    print("🤖 REDDY BOT – CUSTOM CHECKOUT READY")
     print("=" * 50)
     bot.remove_webhook()
     url = os.environ.get('RENDER_EXTERNAL_URL', 'https://reddy-bot.onrender.com')
