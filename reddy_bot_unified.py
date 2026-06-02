@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """
-👑 REDDY PREMIUM BOT - RAZORPAY AUTO-PAYMENT (FULL AUTOMATION)
+👑 REDDY PREMIUM BOT – FULLY IMPROVED (NO SETUP OPTION)
+- Razorpay Auto Payment
+- Stock Display + Low Stock Alerts
+- Auto Key Generation on Low Stock
+- Daily Sales Report
+- Colorful Buttons
+- Professional Invoice
+- Duplicate Webhook Protection
 """
 
 import telebot
@@ -17,26 +24,27 @@ import json
 import razorpay
 import hashlib
 import hmac
+import schedule
 from flask import Flask, request, jsonify, send_from_directory
 
-# ========== CONFIG ==========
+# ========== CONFIGURATION ==========
 BOT_TOKEN = "8646356913:AAHqS40oeDQQPZRik2GYcE0nAjyQfdo5QVo"
 ADMIN_ID = "1648621649"
 DATA_FILE = "bot_data.json"
 
-# Razorpay Credentials (Replace with your actual keys)
+# Razorpay Credentials (Replace with your own)
 RAZORPAY_KEY_ID = "rzp_test_Swf7omML9UnAHQ"
 RAZORPAY_KEY_SECRET = "70nCcG6l2fOXSijMSDB7UFuU"
-RAZORPAY_WEBHOOK_SECRET = "MyRzpWebhookSecret@2024"  # from Razorpay Dashboard
+RAZORPAY_WEBHOOK_SECRET = "MyRzpWebhookSecret@2024"
 
-# Initialize Razorpay Client
 razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 
 app = Flask(__name__)
 bot = telebot.TeleBot(BOT_TOKEN)
-pending_orders = {}  # For storing temporary order data
+pending_orders = {}
+processed_payments = set()
 
-# Load data from file
+# ========== DATA STORAGE ==========
 def load_data():
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, "r") as f:
@@ -44,7 +52,8 @@ def load_data():
     return {
         "users": {},
         "orders": [],
-        "keys": {p: {"day": [], "week": [], "month": []} for p in ["deadeye","vision","rage","winios","kingios"]}
+        "keys": {p: {"day": [], "week": [], "month": []} for p in ["deadeye","vision","rage","winios","kingios"]},
+        "processed_payments": []
     }
 
 def save_data(data):
@@ -52,7 +61,9 @@ def save_data(data):
         json.dump(data, f, indent=2)
 
 data = load_data()
+processed_payments = set(data.get("processed_payments", []))
 
+# ========== PRODUCTS & PRICES ==========
 PRODUCTS = {
     "deadeye": {"name": "Deadeye", "emoji": "🎯"},
     "vision": {"name": "Vision", "emoji": "👁️"},
@@ -77,33 +88,6 @@ PREFIX = {
     "kingios": "KING",
 }
 
-SETUP_VIDEOS = {
-    "deadeye": "https://youtu.be/example_deadeye",
-    "vision": "https://youtu.be/example_vision",
-    "rage": "https://youtu.be/example_rage",
-    "winios": "https://youtu.be/example_winios",
-    "kingios": "https://youtu.be/example_kingios",
-}
-
-SETUP_TEXT = {
-    "deadeye": "1️⃣ Download Deadeye\n2️⃣ Install\n3️⃣ Enter key\n4️⃣ Activate",
-    "vision": "1️⃣ Download Vision\n2️⃣ Run as admin\n3️⃣ Enter key\n4️⃣ Enjoy",
-    "rage": "1️⃣ Extract Rage\n2️⃣ Run loader\n3️⃣ Enter key\n4️⃣ Launch game",
-    "winios": "1️⃣ Install WinIOS\n2️⃣ Open as admin\n3️⃣ Paste key\n4️⃣ Restart",
-    "kingios": "1️⃣ Download KingIOS\n2️⃣ Disable Defender\n3️⃣ Install\n4️⃣ Activate",
-}
-
-STICKERS = {
-    "welcome": "✨👑",
-    "buy": "🛒💎",
-    "key": "🔑",
-    "success": "🎉✅",
-    "payment": "💳",
-    "stock": "📦",
-    "support": "💬",
-    "setup": "🎥📺",
-}
-
 # ========== DATABASE HELPERS ==========
 def get_stock(product, duration):
     return len(data["keys"].get(product, {}).get(duration, []))
@@ -113,8 +97,28 @@ def pop_key(product, duration):
     if pool:
         key = pool.pop(0)
         save_data(data)
+        remaining = len(pool)
+        if remaining <= 5:
+            bot.send_message(ADMIN_ID, f"⚠️ *Low Stock Alert!*\n\n{PRODUCTS[product]['name']} - {duration}\nOnly {remaining} keys left.\nPlease add new keys.", parse_mode="Markdown")
+            if remaining < 3:
+                auto_refill_stock(product, duration)
         return key
     return None
+
+def auto_refill_stock(product, duration, target=10):
+    current = get_stock(product, duration)
+    if current < target:
+        needed = target - current
+        prefix = PREFIX.get(product, "KEY")
+        new_keys = []
+        for _ in range(needed):
+            k = f"{prefix}-{''.join(random.choices('ABCDEFGHJKLMNPQRSTUVWXYZ0123456789',k=4))}-{''.join(random.choices('ABCDEFGHJKLMNPQRSTUVWXYZ0123456789',k=4))}-{''.join(random.choices('ABCDEFGHJKLMNPQRSTUVWXYZ0123456789',k=4))}"
+            new_keys.append(k)
+        if product not in data["keys"]:
+            data["keys"][product] = {"day": [], "week": [], "month": []}
+        data["keys"][product][duration].extend(new_keys)
+        save_data(data)
+        bot.send_message(ADMIN_ID, f"🤖 *Auto-Refill*\n{PRODUCTS[product]['name']} - {duration}\nAdded {needed} new keys.", parse_mode="Markdown")
 
 def add_keys_to_db(product, duration, key_list):
     if product not in data["keys"]:
@@ -154,9 +158,7 @@ def get_stats():
 
 # ========== RAZORPAY HELPERS ==========
 def create_razorpay_order(amount, order_id, product, duration):
-    """Create an order in Razorpay and return the checkout link"""
     try:
-        # Amount should be in paise (multiply by 100)
         razorpay_order = razorpay_client.order.create({
             "amount": int(amount * 100),
             "currency": "INR",
@@ -167,46 +169,29 @@ def create_razorpay_order(amount, order_id, product, duration):
                 "bot_order_id": order_id
             }
         })
-        # Create a payment page/checkout link
-        payment_link = f"https://rzp.io/l/{razorpay_order['id']}"  # Simplified, you can also use Razorpay Standard Checkout
+        payment_link = f"https://rzp.io/l/{razorpay_order['id']}"
         return payment_link, razorpay_order['id']
     except Exception as e:
-        print(f"Razorpay order creation failed: {e}")
+        print(f"Razorpay error: {e}")
         return None, None
 
 def verify_webhook_signature(body, signature):
-    """Verify that webhook came from Razorpay"""
     try:
-        expected_signature = hmac.new(
-            RAZORPAY_WEBHOOK_SECRET.encode('utf-8'),
-            body.encode('utf-8'),
-            hashlib.sha256
-        ).hexdigest()
-        return hmac.compare_digest(expected_signature, signature)
-    except Exception as e:
-        print(f"Signature verification error: {e}")
+        expected = hmac.new(RAZORPAY_WEBHOOK_SECRET.encode('utf-8'), body.encode('utf-8'), hashlib.sha256).hexdigest()
+        return hmac.compare_digest(expected, signature)
+    except:
         return False
 
 def deliver_key_from_razorpay(order_id, payment_details):
-    """Deliver key to user after successful payment verification"""
-    # Retrieve pending order data
     if order_id not in pending_orders:
         return False
-    
     o = pending_orders[order_id]
-    
-    # Check stock availability
     if get_stock(o['product'], o['duration']) == 0:
-        # Notify admin about stockout
-        bot.send_message(ADMIN_ID, f"⚠️ STOCK ALERT: {PRODUCTS[o['product']]['name']} - {o['duration']} is OUT OF STOCK!")
+        bot.send_message(ADMIN_ID, f"⚠️ Stock out for {PRODUCTS[o['product']]['name']} - {o['duration']}")
         return False
-    
-    # Fetch and deliver key
     key = pop_key(o['product'], o['duration'])
     if not key:
         return False
-    
-    # Save to user and orders
     save_user_key(o['user_id'], o['username'], PRODUCTS[o['product']]['name'], o['duration'], key)
     save_order({
         "username": o['username'],
@@ -217,9 +202,18 @@ def deliver_key_from_razorpay(order_id, payment_details):
         "date": datetime.datetime.now().strftime("%d %b %Y %I:%M %p"),
         "payment_id": payment_details.get('payment_id', '')
     })
-    
-    # Send key to user
-    setup_link = SETUP_VIDEOS.get(o['product'], "https://t.me/ReddyHack")
+    # Invoice
+    invoice = f"""🧾 *REDDY PREMIUM INVOICE*
+━━━━━━━━━━━━━━━━━━━━━━
+Order ID: `{order_id}`
+Date: {datetime.datetime.now().strftime("%d %b %Y, %I:%M %p")}
+Product: {PRODUCTS[o['product']]['name']}
+Duration: {o['duration']}
+Amount: ₹{o['amount']}
+Payment Status: ✅ Paid
+━━━━━━━━━━━━━━━━━━━━━━
+Thank you for choosing Reddy Premium!"""
+    bot.send_message(o['chat_id'], invoice, parse_mode="Markdown")
     user_msg = f"""✅ *PAYMENT VERIFIED* ✅
 
 🎉 Congratulations!
@@ -236,27 +230,21 @@ def deliver_key_from_razorpay(order_id, payment_details):
 3️⃣ Activate
 4️⃣ Enjoy! 🚀
 
-🎥 *Need setup help?* [Watch Tutorial]({setup_link})
-
 ⚠️ Keep private, do not share.
 
 👑 Thank you for choosing Reddy Premium!"""
-    
     bot.send_message(o['chat_id'], user_msg, parse_mode="Markdown", reply_markup=main_menu())
-    
-    # Cleanup
     del pending_orders[order_id]
     return True
 
-# ========== TELEGRAM KEYBOARDS ==========
+# ========== TELEGRAM KEYBOARDS (NO SETUP) ==========
 def main_menu():
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
-        InlineKeyboardButton(f"{STICKERS['buy']} Buy", callback_data="buy"),
-        InlineKeyboardButton(f"{STICKERS['key']} My Keys", callback_data="mykeys"),
-        InlineKeyboardButton(f"{STICKERS['stock']} Stock", callback_data="stock"),
-        InlineKeyboardButton(f"{STICKERS['setup']} Setup", callback_data="setup_menu"),
-        InlineKeyboardButton(f"{STICKERS['support']} Support", callback_data="help"),
+        InlineKeyboardButton("🛒 Buy Now", callback_data="buy"),
+        InlineKeyboardButton("🔑 My Keys", callback_data="mykeys"),
+        InlineKeyboardButton("📦 Stock", callback_data="stock"),
+        InlineKeyboardButton("💬 Support", callback_data="help"),
     )
     return kb
 
@@ -264,9 +252,9 @@ def products_kb():
     kb = InlineKeyboardMarkup(row_width=2)
     for key, p in PRODUCTS.items():
         total = get_stock(key, "day") + get_stock(key, "week") + get_stock(key, "month")
-        status = "✅" if total > 0 else "❌"
-        kb.add(InlineKeyboardButton(f"{p['emoji']} {p['name']} {status}", callback_data=f"prod_{key}"))
-    kb.add(InlineKeyboardButton("◀️ Back", callback_data="back"))
+        style = 'success' if total > 0 else 'danger'
+        kb.add(InlineKeyboardButton(f"{p['emoji']} {p['name']}", callback_data=f"prod_{key}", style=style))
+    kb.add(InlineKeyboardButton("◀️ Back", callback_data="back", style='primary'))
     return kb
 
 def plans_kb(product):
@@ -280,31 +268,37 @@ def plans_kb(product):
     week_btn = f"📅 7 Days - ₹{p['week']}" + (" 🔴" if week_stock == 0 else "")
     month_btn = f"📅 30 Days - ₹{p['month']}" + (" 🔴" if month_stock == 0 else "")
     
-    kb.add(InlineKeyboardButton(day_btn, callback_data=f"plan_{product}_day"))
-    kb.add(InlineKeyboardButton(week_btn, callback_data=f"plan_{product}_week"))
-    kb.add(InlineKeyboardButton(month_btn, callback_data=f"plan_{product}_month"))
-    kb.add(InlineKeyboardButton(f"{STICKERS['setup']} Setup Guide", callback_data=f"setup_{product}"))
-    kb.add(InlineKeyboardButton("◀️ Back", callback_data="back"))
+    day_style = 'danger' if day_stock == 0 else 'primary'
+    week_style = 'danger' if week_stock == 0 else 'primary'
+    month_style = 'danger' if month_stock == 0 else 'primary'
+    
+    kb.add(InlineKeyboardButton(day_btn, callback_data=f"plan_{product}_day", style=day_style))
+    kb.add(InlineKeyboardButton(week_btn, callback_data=f"plan_{product}_week", style=week_style))
+    kb.add(InlineKeyboardButton(month_btn, callback_data=f"plan_{product}_month", style=month_style))
+    kb.add(InlineKeyboardButton("◀️ Back", callback_data="back", style='primary'))
     return kb
 
-def setup_all_products_kb():
-    kb = InlineKeyboardMarkup(row_width=2)
-    for key, p in PRODUCTS.items():
-        kb.add(InlineKeyboardButton(f"{p['emoji']} {p['name']}", callback_data=f"setup_{key}"))
-    kb.add(InlineKeyboardButton("◀️ Back", callback_data="back"))
+def pay_kb(order_id):
+    kb = InlineKeyboardMarkup()
+    kb.add(InlineKeyboardButton("❌ Cancel", callback_data=f"cancel_{order_id}", style='danger'))
     return kb
 
-# ========== TELEGRAM BOT HANDLERS ==========
+def admin_kb(order_id, uid):
+    kb = InlineKeyboardMarkup()
+    kb.add(InlineKeyboardButton("✅ Approve", callback_data=f"ok_{order_id}_{uid}", style='success'))
+    kb.add(InlineKeyboardButton("❌ Reject", callback_data=f"no_{order_id}_{uid}", style='danger'))
+    return kb
+
+# ========== BOT HANDLERS ==========
 @bot.message_handler(commands=['start'])
 def start(msg):
-    text = f"""{STICKERS['welcome']} *REDDY PREMIUM* {STICKERS['welcome']}
+    text = f"""✨👑 *REDDY PREMIUM* 👑✨
 
 Hello {msg.from_user.first_name}!
 
 💎 Trusted License Shop
-⚡ Instant Delivery
-🛡️ 100% Genuine
-🎥 Setup guides included!
+⚡ Instant Delivery (Razorpay)
+🛡️ 100% Genuine Keys
 
 👇 Choose option
 """
@@ -321,10 +315,10 @@ def handle(call):
         bot.edit_message_text("👇 *Main Menu*", cid, call.message.id, parse_mode="Markdown", reply_markup=main_menu())
     
     elif data_cb == "buy":
-        bot.edit_message_text(f"{STICKERS['buy']} *Select Product*", cid, call.message.id, parse_mode="Markdown", reply_markup=products_kb())
+        bot.edit_message_text("🛒 *Select Product*", cid, call.message.id, parse_mode="Markdown", reply_markup=products_kb())
     
     elif data_cb == "stock":
-        text = f"{STICKERS['stock']} *Stock Available*\n\n"
+        text = "📦 *Stock Available*\n\n"
         for key, p in PRODUCTS.items():
             d = get_stock(key, "day")
             w = get_stock(key, "week")
@@ -339,46 +333,19 @@ def handle(call):
         uid_str = str(uid)
         user_keys = data["users"].get(uid_str, {}).get("keys", [])
         if not user_keys:
-            text = f"{STICKERS['key']} *My Keys*\n\nYou have no keys yet.\nUse Buy option."
+            text = "🔑 *My Keys*\n\nYou have no keys yet.\nUse Buy option."
             bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=main_menu())
         else:
-            text = f"{STICKERS['key']} *Your Keys*\n\n"
+            text = "🔑 *Your Keys*\n\n"
             for k in user_keys[-5:][::-1]:
-                prod_key = None
-                for pid, pdata in PRODUCTS.items():
-                    if pdata['name'].lower() == k['product'].lower():
-                        prod_key = pid
-                        break
-                text += f"📦 {k['product']} ({k['duration']})\n🔑 `{k['key']}`\n📅 {k['date']}\n"
-                if prod_key and prod_key in SETUP_VIDEOS:
-                    text += f"🎥 [Setup Guide]({SETUP_VIDEOS[prod_key]})\n"
-                text += "\n"
+                text += f"📦 {k['product']} ({k['duration']})\n🔑 `{k['key']}`\n📅 {k['date']}\n\n"
             bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=main_menu())
-    
-    elif data_cb == "setup_menu":
-        text = f"{STICKERS['setup']} *Setup Guides*\n\nSelect a product to view its setup tutorial:"
-        bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=setup_all_products_kb())
-    
-    elif data_cb.startswith("setup_"):
-        product = data_cb.split("_")[1]
-        if product in SETUP_VIDEOS:
-            text = f"🎥 *{PRODUCTS[product]['name']} Setup Guide*\n\n"
-            text += f"📹 *Video Tutorial:*\n{SETUP_VIDEOS[product]}\n\n"
-            text += f"📝 *Step-by-Step:*\n{SETUP_TEXT.get(product, 'Follow the video instructions.')}\n\n"
-            text += "💡 *Need help?* Contact @ReddyHack"
-            kb = InlineKeyboardMarkup()
-            kb.add(InlineKeyboardButton("◀️ Back to Setup Menu", callback_data="setup_menu"))
-            kb.add(InlineKeyboardButton("🏠 Main Menu", callback_data="back"))
-            bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=kb)
-        else:
-            bot.answer_callback_query(call.id, "Setup guide coming soon!", show_alert=True)
     
     elif data_cb == "help":
         kb = InlineKeyboardMarkup()
         kb.add(InlineKeyboardButton("📞 Contact", url="https://t.me/ReddyHack"))
-        kb.add(InlineKeyboardButton("🎥 Setup Guides", callback_data="setup_menu"))
         kb.add(InlineKeyboardButton("◀️ Back", callback_data="back"))
-        text = f"{STICKERS['support']} *Support*\n\n📞 @ReddyHack\n24/7 Available\n\nAlso check our setup guides for help."
+        text = "💬 *Support*\n\n📞 @ReddyHack\n24/7 Available"
         bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=kb)
     
     elif data_cb.startswith("prod_"):
@@ -388,7 +355,7 @@ def handle(call):
         text += f"🟢 1 Day - ₹{PRICES[product]['day']}\n"
         text += f"🟡 7 Days - ₹{PRICES[product]['week']}\n"
         text += f"🔴 30 Days - ₹{PRICES[product]['month']}\n\n"
-        text += "✅ Choose your plan or view Setup Guide 👇"
+        text += "✅ Choose your plan 👇"
         bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=plans_kb(product))
     
     elif data_cb.startswith("plan_"):
@@ -400,14 +367,11 @@ def handle(call):
         amount = PRICES[product][duration]
         order_id = f"R{int(time.time())}{random.randint(10,99)}"
         
-        # Create Razorpay Order and get payment link
         payment_link, razorpay_order_id = create_razorpay_order(amount, order_id, product, duration)
-        
         if not payment_link:
-            bot.answer_callback_query(call.id, "❌ Payment gateway error! Please try again later.", show_alert=True)
+            bot.answer_callback_query(call.id, "❌ Payment error! Try later.", show_alert=True)
             return
         
-        # Store pending order data
         pending_orders[order_id] = {
             "user_id": uid, "username": uname,
             "product": product, "duration": duration,
@@ -415,33 +379,25 @@ def handle(call):
             "razorpay_order_id": razorpay_order_id
         }
         
-        # Send payment link and instructions
-        caption = f"""{STICKERS['payment']} *RAZORPAY PAYMENT* {STICKERS['payment']}
+        caption = f"""💳 *RAZORPAY PAYMENT*
 
-🆔 *Order:* `{order_id}`
-📦 *Product:* {PRODUCTS[product]['name']}
-⏱️ *Duration:* {duration}
-💰 *Amount:* ₹{amount}
+🆔 Order: `{order_id}`
+📦 {PRODUCTS[product]['name']}
+⏱️ {duration}
+💰 ₹{amount}
 
-━━━━━━━━━━━━━━━━━━━━━━
-🔗 *Click below to pay securely:*
+👉 [PAY NOW]({payment_link})
 
-👉 [PAY NOW - Razorpay]({payment_link})
-
-━━━━━━━━━━━━━━━━━━━━━━
-✅ *After payment, key will be sent automatically*
-🔑 *No manual approval needed!*
-⏳ *Complete payment within 15 minutes*
-"""
+✅ After payment, key will be sent automatically.
+⏳ Complete within 15 minutes."""
         
         kb = InlineKeyboardMarkup()
         kb.add(InlineKeyboardButton("💳 PAY NOW", url=payment_link))
-        kb.add(InlineKeyboardButton("❌ Cancel", callback_data=f"cancel_{order_id}"))
+        kb.add(InlineKeyboardButton("❌ Cancel", callback_data=f"cancel_{order_id}", style='danger'))
         
         bot.delete_message(cid, call.message.id)
         bot.send_message(cid, caption, parse_mode="Markdown", reply_markup=kb, disable_web_page_preview=True)
         
-        # Auto-expire after 15 minutes
         threading.Timer(900, lambda: expire(order_id, cid)).start()
     
     elif data_cb.startswith("cancel_"):
@@ -459,36 +415,48 @@ def expire(order_id, cid):
         except:
             pass
 
-# ========== RAZORPAY WEBHOOK HANDLER ==========
+# ========== RAZORPAY WEBHOOK ==========
 @app.route('/razorpay_webhook', methods=['POST'])
 def razorpay_webhook():
-    # Verify webhook signature
     signature = request.headers.get('X-Razorpay-Signature')
     if not signature or not verify_webhook_signature(request.get_data(as_text=True), signature):
         return jsonify({"error": "Invalid signature"}), 400
-    
-    # Parse webhook data
     webhook_data = request.json
-    event = webhook_data.get('event')
-    
-    if event == 'payment.captured':
-        payment_data = webhook_data.get('payload', {}).get('payment', {}).get('entity', {})
-        order_id_from_razorpay = payment_data.get('order_id')
-        
-        # Find our internal order ID from the Razorpay order ID
-        internal_order_id = None
-        for oid, order_data in pending_orders.items():
-            if order_data.get('razorpay_order_id') == order_id_from_razorpay:
-                internal_order_id = oid
+    if webhook_data.get('event') == 'payment.captured':
+        payment = webhook_data.get('payload', {}).get('payment', {}).get('entity', {})
+        rzp_order_id = payment.get('order_id')
+        # Check duplicate
+        if rzp_order_id in processed_payments:
+            return jsonify({"status": "already_processed"}), 200
+        # Find internal order
+        internal_id = None
+        for oid, od in pending_orders.items():
+            if od.get('razorpay_order_id') == rzp_order_id:
+                internal_id = oid
                 break
-        
-        if internal_order_id:
-            deliver_key_from_razorpay(internal_order_id, payment_data)
-        else:
-            # Order might have expired, log it
-            print(f"Order not found for Razorpay order: {order_id_from_razorpay}")
-    
+        if internal_id:
+            deliver_key_from_razorpay(internal_id, payment)
+            processed_payments.add(rzp_order_id)
+            data["processed_payments"] = list(processed_payments)
+            save_data(data)
     return jsonify({"status": "ok"}), 200
+
+# ========== DAILY REPORT SCHEDULER ==========
+def send_daily_report():
+    today_str = datetime.datetime.now().strftime("%d %b %Y")
+    today_orders = [o for o in data["orders"] if o.get("date", "").startswith(today_str)]
+    total_sales = sum(o.get("amount", 0) for o in today_orders)
+    msg = f"📊 *Daily Sales Report* – {today_str}\n\nOrders: {len(today_orders)}\nRevenue: ₹{total_sales}\n\n✅ Bot running smoothly."
+    bot.send_message(ADMIN_ID, msg, parse_mode="Markdown")
+
+def run_scheduler():
+    schedule.every().day.at("23:59").do(send_daily_report)
+    while True:
+        schedule.run_pending()
+        time.sleep(60)
+
+# Start scheduler thread
+threading.Thread(target=run_scheduler, daemon=True).start()
 
 # ========== FLASK API FOR ADMIN PANEL ==========
 @app.route('/')
@@ -587,13 +555,8 @@ def webhook():
 
 if __name__ == "__main__":
     print("=" * 50)
-    print("🤖 REDDY BOT - RAZORPAY AUTO-PAYMENT")
+    print("🤖 REDDY BOT - SETUP REMOVED")
     print("=" * 50)
-    print("✅ Payment Gateway: Razorpay (Fully Automated)")
-    print("✅ Stock Display: Enabled")
-    print("✅ Setup Guides: Enabled")
-    print("=" * 50)
-    
     bot.remove_webhook()
     url = os.environ.get('RENDER_EXTERNAL_URL', 'https://reddy-bot.onrender.com')
     bot.set_webhook(f"{url}/webhook")
