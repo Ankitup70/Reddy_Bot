@@ -4,3 +4,4 @@ Pillow==10.4.0
 flask==3.0.0
 razorpay==1.4.2
 requests==2.31.0
+setuptools==69.5.1
