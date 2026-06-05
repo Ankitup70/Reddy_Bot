@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-REDDY PREMIUM BOT – SQLite + UPI Auto Verify (SMS Webhook for iOS)
+REDDY PREMIUM BOT – SQLite + UPI Auto Verify (iOS SMS Webhook)
 """
 
 import telebot
@@ -34,13 +34,11 @@ processed_txns = set()    # to avoid duplicate processing
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    # Users table
     c.execute('''CREATE TABLE IF NOT EXISTS users (
         user_id TEXT PRIMARY KEY,
         username TEXT,
         keys_data TEXT
     )''')
-    # Orders table
     c.execute('''CREATE TABLE IF NOT EXISTS orders (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT,
@@ -51,7 +49,6 @@ def init_db():
         date TEXT,
         payment_id TEXT
     )''')
-    # Keys pool table
     c.execute('''CREATE TABLE IF NOT EXISTS keys_pool (
         product TEXT,
         duration TEXT,
@@ -59,7 +56,6 @@ def init_db():
         added_date TEXT
     )''')
     c.execute('CREATE INDEX IF NOT EXISTS idx_keys ON keys_pool (product, duration)')
-    # Stats table
     c.execute('''CREATE TABLE IF NOT EXISTS stats (
         key TEXT PRIMARY KEY,
         value INTEGER
@@ -341,45 +337,53 @@ def expire_order(order_id, cid):
         except:
             pass
 
-# ========== SMS WEBHOOK (iOS & Android) ==========
+# ========== iOS SMS WEBHOOK (POST endpoint) ==========
 @app.route('/sms_webhook_ios', methods=['POST'])
 def sms_webhook_ios():
-    data = request.json
-    if data.get('secret') != SMS_WEBHOOK_SECRET:
-        return jsonify({"error": "Unauthorized"}), 401
-    sms_text = data.get('sms_body', '')
-    print(f"[DEBUG] iOS webhook received: {sms_text}")
-    # Extract amount (supports ₹149, Rs 149, 149, INR149)
-    match = re.search(r'[\₹RsINR]*\s*(\d{2,4})', sms_text, re.IGNORECASE)
-    amount = int(match.group(1)) if match else 0
-    # Find pending order with same amount
-    matched = None
-    for oid, order in pending_orders.items():
-        if order['amount'] == amount:
-            matched = oid
-            break
-    if not matched:
-        return jsonify({"error": f"No pending order for amount {amount}"}), 404
-    order = pending_orders[matched]
-    key = pop_key(order['product'], order['duration'])
-    if not key:
-        key = generate_key(PREFIX.get(order['product'], "KEY"))
-    # Deliver key
-    bot.send_message(order['chat_id'],
-                     f"✅ *Payment Verified!*\n\n🔑 Your Key: `{key}`\n\nThank you!",
-                     parse_mode="Markdown")
-    # Save order
-    save_order({
-        "username": order['username'],
-        "product": PRODUCTS[order['product']]['name'],
-        "duration": order['duration'],
-        "amount": order['amount'],
-        "key": key,
-        "date": datetime.datetime.now().strftime("%d %b %Y %I:%M %p"),
-        "payment_id": "ios_webhook"
-    })
-    del pending_orders[matched]
-    return jsonify({"status": "key_delivered", "order_id": matched})
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "Invalid JSON"}), 400
+        if data.get('secret') != SMS_WEBHOOK_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+        sms_text = data.get('sms_body', '')
+        print(f"[DEBUG] iOS webhook received: {sms_text}")
+        # Extract amount from SMS (supports ₹149, Rs 149, INR149, 149)
+        match = re.search(r'[\₹RsINR]*\s*(\d{2,4})', sms_text, re.IGNORECASE)
+        amount = int(match.group(1)) if match else 0
+        if amount == 0:
+            return jsonify({"error": "Could not extract amount"}), 400
+        # Find pending order with matching amount
+        matched = None
+        for oid, order in pending_orders.items():
+            if order['amount'] == amount:
+                matched = oid
+                break
+        if not matched:
+            return jsonify({"error": f"No pending order for amount {amount}"}), 404
+        order = pending_orders[matched]
+        key = pop_key(order['product'], order['duration'])
+        if not key:
+            key = generate_key(PREFIX.get(order['product'], "KEY"))
+        # Deliver key to user
+        bot.send_message(order['chat_id'],
+                         f"✅ *Payment Verified!*\n\n🔑 Your Key: `{key}`\n\nThank you!",
+                         parse_mode="Markdown")
+        # Save order to database
+        save_order({
+            "username": order['username'],
+            "product": PRODUCTS[order['product']]['name'],
+            "duration": order['duration'],
+            "amount": order['amount'],
+            "key": key,
+            "date": datetime.datetime.now().strftime("%d %b %Y %I:%M %p"),
+            "payment_id": "ios_webhook"
+        })
+        del pending_orders[matched]
+        return jsonify({"status": "key_delivered", "order_id": matched})
+    except Exception as e:
+        print(f"Error in /sms_webhook_ios: {e}")
+        return jsonify({"error": str(e)}), 500
 
 # ========== ADMIN PANEL API ROUTES ==========
 @app.route('/')
