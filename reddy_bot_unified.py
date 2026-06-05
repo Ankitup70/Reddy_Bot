@@ -1,19 +1,36 @@
 #!/usr/bin/env python3
 """
-REDDY PREMIUM BOT – SQLITE (NO MORE KEY LOSS)
+REDDY PREMIUM BOT – SQLite + UPI Auto Verify (SMS Webhook for iOS)
 """
 
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-import random, string, datetime, threading, time, os, json, re, sqlite3
+import random
+import string
+import datetime
+import threading
+import time
+import os
+import json
+import re
+import sqlite3
+import qrcode
+import io
 from flask import Flask, request, jsonify, send_from_directory
 
 # ========== CONFIG ==========
 BOT_TOKEN = "8646356913:AAHqS40oeDQQPZRik2GYcE0nAjyQfdo5QVo"
 ADMIN_ID = "1648621649"
-DB_FILE = "bot_data.db"  # SQLite database file
+DB_FILE = "bot_data.db"
+UPI_ID = "q542401897@ybl"
+SMS_WEBHOOK_SECRET = "MySecretKey123"
 
-# ========== DATABASE SETUP ==========
+app = Flask(__name__)
+bot = telebot.TeleBot(BOT_TOKEN)
+pending_orders = {}       # order_id -> details
+processed_txns = set()    # to avoid duplicate processing
+
+# ========== DATABASE SETUP (SQLite) ==========
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -34,7 +51,7 @@ def init_db():
         date TEXT,
         payment_id TEXT
     )''')
-    # Keys table (product, duration, key list stored as JSON)
+    # Keys pool table
     c.execute('''CREATE TABLE IF NOT EXISTS keys_pool (
         product TEXT,
         duration TEXT,
@@ -54,7 +71,7 @@ def init_db():
 
 init_db()
 
-# Helper functions using SQLite
+# ========== DATABASE HELPERS ==========
 def get_stock(product, duration):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -73,7 +90,6 @@ def pop_key(product, duration):
         c.execute("DELETE FROM keys_pool WHERE product=? AND duration=? AND key=? LIMIT 1", (product, duration, key))
         conn.commit()
         conn.close()
-        # Log key pop (for debugging)
         print(f"[POP] {product} {duration} -> {key}")
         return key
     conn.close()
@@ -93,7 +109,6 @@ def add_keys_to_db(product, duration, key_list):
 def save_user_key(user_id, username, product_name, duration, key):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    # Get existing keys_data
     c.execute("SELECT keys_data FROM users WHERE user_id=?", (str(user_id),))
     row = c.fetchone()
     if row:
@@ -139,9 +154,7 @@ def get_all_keys():
     c.execute("SELECT product, duration, key FROM keys_pool")
     rows = c.fetchall()
     conn.close()
-    keys_dict = {}
-    for p in PRODUCTS:
-        keys_dict[p] = {"day": [], "week": [], "month": []}
+    keys_dict = {p: {"day": [], "week": [], "month": []} for p in PRODUCTS}
     for product, duration, key in rows:
         if product in keys_dict:
             keys_dict[product][duration].append(key)
@@ -176,7 +189,7 @@ def clear_keys_pool(product, duration):
 def generate_key(prefix):
     return f"{prefix}-{''.join(random.choices('ABCDEFGHJKLMNPQRSTUVWXYZ0123456789',k=4))}-{''.join(random.choices('ABCDEFGHJKLMNPQRSTUVWXYZ0123456789',k=4))}-{''.join(random.choices('ABCDEFGHJKLMNPQRSTUVWXYZ0123456789',k=4))}"
 
-# ========== PRODUCTS & PRICES (same as before) ==========
+# ========== PRODUCTS & PRICES ==========
 PRODUCTS = {
     "deadeye": {"name": "Deadeye", "emoji": "🎯"},
     "vision": {"name": "Vision", "emoji": "👁️"},
@@ -199,17 +212,7 @@ PREFIX = {
     "kingios": "KING",
 }
 
-UPI_ID = "q542401897@ybl"
-SMS_WEBHOOK_SECRET = "MySecretKey123"
-
-app = Flask(__name__)
-bot = telebot.TeleBot(BOT_TOKEN)
-pending_orders = {}
-processed_txns = set()
-
-# ========== QR CODE FUNCTION ==========
 def make_qr(amount, order_id):
-    import qrcode, io
     upi = f"upi://pay?pa={UPI_ID}&pn=Reddy+Premium&am={amount}&tn={order_id}&cu=INR"
     qr = qrcode.QRCode(box_size=8, border=2)
     qr.add_data(upi)
@@ -220,7 +223,7 @@ def make_qr(amount, order_id):
     buf.seek(0)
     return buf
 
-# ========== KEYBOARDS (same, colorful) ==========
+# ========== KEYBOARDS ==========
 def main_menu():
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
@@ -258,7 +261,7 @@ def plans_kb(product):
     kb.add(InlineKeyboardButton("◀️ Back", callback_data="back", style='primary'))
     return kb
 
-# ========== BOT HANDLERS (same as before, but using SQLite functions) ==========
+# ========== BOT HANDLERS ==========
 @bot.message_handler(commands=['start'])
 def start(msg):
     bot.send_message(msg.chat.id, f"👑 *REDDY PREMIUM*\n\nHello {msg.from_user.first_name}!\n\n💎 Trusted License Shop\n⚡ UPI Auto-Delivery\n🛡️ 100% Genuine\n\n👇 Choose option", parse_mode="Markdown", reply_markup=main_menu())
@@ -268,43 +271,45 @@ def handle(call):
     cid = call.message.chat.id
     uid = call.from_user.id
     uname = call.from_user.username or "User"
-    data_cb = call.data
+    data = call.data
 
-    if data_cb == "back":
+    if data == "back":
         bot.edit_message_text("👇 *Main Menu*", cid, call.message.id, parse_mode="Markdown", reply_markup=main_menu())
-    elif data_cb == "buy":
+    elif data == "buy":
         bot.edit_message_text("🛒 *Select Product*", cid, call.message.id, parse_mode="Markdown", reply_markup=products_kb())
-    elif data_cb == "stock":
-        text = "📦 *Stock*\n\n"
+    elif data == "stock":
+        text = "📦 *Stock Available*\n\n"
         for key, p in PRODUCTS.items():
-            d,w,m = get_stock(key,"day"), get_stock(key,"week"), get_stock(key,"month")
-            text += f"{p['emoji']} {p['name']}: 1D:{d} 7D:{w} 30D:{m}\n"
+            d = get_stock(key, "day")
+            w = get_stock(key, "week")
+            m = get_stock(key, "month")
+            text += f"{p['emoji']} *{p['name']}* : 1D:{d} 7D:{w} 30D:{m}\n"
         bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=main_menu())
-    elif data_cb == "mykeys":
+    elif data == "mykeys":
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
         c.execute("SELECT keys_data FROM users WHERE user_id=?", (str(uid),))
         row = c.fetchone()
         conn.close()
-        user_keys = json.loads(row[0]) if row else []
-        if not user_keys:
+        keys = json.loads(row[0]) if row else []
+        if not keys:
             bot.edit_message_text("🔑 *My Keys*\n\nNo keys yet.", cid, call.message.id, parse_mode="Markdown", reply_markup=main_menu())
         else:
             txt = "🔑 *Your Keys*\n\n"
-            for k in user_keys[-5:][::-1]:
+            for k in keys[-5:][::-1]:
                 txt += f"📦 {k['product']} ({k['duration']})\n🔑 `{k['key']}`\n📅 {k['date']}\n\n"
             bot.edit_message_text(txt, cid, call.message.id, parse_mode="Markdown", reply_markup=main_menu())
-    elif data_cb == "help":
+    elif data == "help":
         kb = InlineKeyboardMarkup()
         kb.add(InlineKeyboardButton("📞 Contact", url="https://t.me/ReddyHack", style='primary'))
         kb.add(InlineKeyboardButton("◀️ Back", callback_data="back", style='primary'))
         bot.edit_message_text("💬 *Support*\n\n@ReddyHack\n24/7", cid, call.message.id, parse_mode="Markdown", reply_markup=kb)
-    elif data_cb.startswith("prod_"):
-        product = data_cb.split("_")[1]
+    elif data.startswith("prod_"):
+        product = data.split("_")[1]
         p = PRODUCTS[product]
         bot.edit_message_text(f"{p['emoji']} *{p['name']}*\n👇 Choose plan", cid, call.message.id, parse_mode="Markdown", reply_markup=plans_kb(product))
-    elif data_cb.startswith("plan_"):
-        _, product, duration = data_cb.split("_")
+    elif data.startswith("plan_"):
+        _, product, duration = data.split("_")
         if get_stock(product, duration) == 0:
             bot.answer_callback_query(call.id, "Sold out!", show_alert=True)
             return
@@ -316,14 +321,14 @@ def handle(call):
             "amount": amount, "chat_id": cid
         }
         qr = make_qr(amount, order_id)
-        caption = f"💳 *UPI Payment*\n\nOrder: `{order_id}`\nProduct: {PRODUCTS[product]['name']}\nAmount: ₹{amount}\n\nUPI ID: `{UPI_ID}`\n\n*Scan QR or Pay & SMS will auto-verify*"
+        caption = f"💳 *UPI Payment*\n\nOrder: `{order_id}`\nProduct: {PRODUCTS[product]['name']}\nAmount: ₹{amount}\n\nUPI ID: `{UPI_ID}`\n\nScan QR code or pay to this UPI ID.\nAfter payment, key will be sent automatically."
         bot.delete_message(cid, call.message.id)
         kb = InlineKeyboardMarkup()
         kb.add(InlineKeyboardButton("❌ Cancel", callback_data=f"cancel_{order_id}", style='danger'))
         bot.send_photo(cid, qr, caption=caption, parse_mode="Markdown", reply_markup=kb)
         threading.Timer(900, lambda: expire_order(order_id, cid)).start()
-    elif data_cb.startswith("cancel_"):
-        order_id = data_cb.split("_")[1]
+    elif data.startswith("cancel_"):
+        order_id = data.split("_")[1]
         if order_id in pending_orders:
             del pending_orders[order_id]
         bot.edit_message_text("❌ Cancelled", cid, call.message.id, reply_markup=main_menu())
@@ -336,34 +341,34 @@ def expire_order(order_id, cid):
         except:
             pass
 
-# ========== SMS WEBHOOK ==========
-@app.route('/sms_webhook', methods=['POST'])
-def sms_webhook():
-    data_json = request.json
-    if data_json.get('secret') != SMS_WEBHOOK_SECRET:
+# ========== SMS WEBHOOK (iOS & Android) ==========
+@app.route('/sms_webhook_ios', methods=['POST'])
+def sms_webhook_ios():
+    data = request.json
+    if data.get('secret') != SMS_WEBHOOK_SECRET:
         return jsonify({"error": "Unauthorized"}), 401
-    sms_text = data_json.get('sms_body', '')
-    txn_match = re.search(r'TXN[0-9]{10,}', sms_text)
-    if not txn_match:
-        return jsonify({"error": "No TXN ID"}), 400
-    txn_id = txn_match.group()
-    if txn_id in processed_txns:
-        return jsonify({"status": "already_processed"}), 200
-    processed_txns.add(txn_id)
-    amount_match = re.search(r'[Rs₹]+\.?\s?(\d+)', sms_text, re.IGNORECASE)
-    amount = int(amount_match.group(1)) if amount_match else 0
+    sms_text = data.get('sms_body', '')
+    print(f"[DEBUG] iOS webhook received: {sms_text}")
+    # Extract amount (supports ₹149, Rs 149, 149, INR149)
+    match = re.search(r'[\₹RsINR]*\s*(\d{2,4})', sms_text, re.IGNORECASE)
+    amount = int(match.group(1)) if match else 0
+    # Find pending order with same amount
     matched = None
     for oid, order in pending_orders.items():
         if order['amount'] == amount:
             matched = oid
             break
     if not matched:
-        return jsonify({"error": "No pending order with that amount"}), 404
+        return jsonify({"error": f"No pending order for amount {amount}"}), 404
     order = pending_orders[matched]
     key = pop_key(order['product'], order['duration'])
     if not key:
-        key = generate_key(PREFIX[order['product']])
-    save_user_key(order['user_id'], order['username'], PRODUCTS[order['product']]['name'], order['duration'], key)
+        key = generate_key(PREFIX.get(order['product'], "KEY"))
+    # Deliver key
+    bot.send_message(order['chat_id'],
+                     f"✅ *Payment Verified!*\n\n🔑 Your Key: `{key}`\n\nThank you!",
+                     parse_mode="Markdown")
+    # Save order
     save_order({
         "username": order['username'],
         "product": PRODUCTS[order['product']]['name'],
@@ -371,13 +376,12 @@ def sms_webhook():
         "amount": order['amount'],
         "key": key,
         "date": datetime.datetime.now().strftime("%d %b %Y %I:%M %p"),
-        "payment_id": txn_id
+        "payment_id": "ios_webhook"
     })
-    bot.send_message(order['chat_id'], f"✅ *Payment Verified!*\n\n🔑 Your Key: `{key}`\n\nThank you!", parse_mode="Markdown", reply_markup=main_menu())
     del pending_orders[matched]
-    return jsonify({"status": "key_delivered", "order_id": matched}), 200
+    return jsonify({"status": "key_delivered", "order_id": matched})
 
-# ========== ADMIN PANEL ROUTES (updated for SQLite) ==========
+# ========== ADMIN PANEL API ROUTES ==========
 @app.route('/')
 def home():
     return jsonify({"status": "online", "storage": "sqlite"})
@@ -478,8 +482,9 @@ def webhook():
         return '', 200
     return '', 403
 
+# ========== MAIN ==========
 if __name__ == "__main__":
-    print("Starting bot with SQLite (no more key loss)...")
+    print("Starting Reddy Premium Bot with SQLite + iOS webhook...")
     bot.remove_webhook()
     url = os.environ.get('RENDER_EXTERNAL_URL', 'https://reddy-bot.onrender.com')
     bot.set_webhook(f"{url}/webhook")
