@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-REDDY PREMIUM BOT – UPI AUTO VERIFY (via SMS Forwarder)
+REDDY PREMIUM BOT – UPI AUTO VERIFY (SMS FORWARDER)
 """
 
 import telebot
@@ -8,19 +8,19 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 import random, string, datetime, threading, time, os, json, re
 from flask import Flask, request, jsonify, send_from_directory
 
-# ========== CONFIG ==========
+# ========== CONFIG (Change these on Render via Env Vars) ==========
 BOT_TOKEN = "8646356913:AAHqS40oeDQQPZRik2GYcE0nAjyQfdo5QVo"
 ADMIN_ID = "1648621649"
 DATA_FILE = "bot_data.json"
-UPI_ID = "q542401897@ybl"  # Your UPI ID
-SMS_WEBHOOK_SECRET = "MySecretKey123"  # Optional: for security
+UPI_ID = "q542401897@ybl"
+SMS_WEBHOOK_SECRET = "MySecretKey123"   # ← same as in SMS Forwarder app
 
 app = Flask(__name__)
 bot = telebot.TeleBot(BOT_TOKEN)
-pending_orders = {}   # order_id -> details
-processed_txns = set()  # to avoid duplicate processing
+pending_orders = {}
+processed_txns = set()
 
-# ========== DATA STORAGE ==========
+# ---------- Data Storage ----------
 def load_data():
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, "r") as f:
@@ -37,7 +37,6 @@ def save_data(data):
 
 data = load_data()
 
-# ========== PRODUCTS & PRICES ==========
 PRODUCTS = {
     "deadeye": {"name": "Deadeye", "emoji": "🎯"},
     "vision": {"name": "Vision", "emoji": "👁️"},
@@ -62,7 +61,6 @@ PREFIX = {
     "kingios": "KING",
 }
 
-# ========== HELPERS ==========
 def get_stock(product, duration):
     return len(data["keys"].get(product, {}).get(duration, []))
 
@@ -96,9 +94,6 @@ def save_order(order_data):
     data["orders"].insert(0, order_data)
     save_data(data)
 
-def get_stats():
-    return {"total_orders": len(data["orders"]), "total_revenue": sum(o.get("amount",0) for o in data["orders"])}
-
 def generate_key(product):
     prefix = PREFIX.get(product, "KEY")
     return f"{prefix}-{''.join(random.choices('ABCDEFGHJKLMNPQRSTUVWXYZ0123456789',k=4))}-{''.join(random.choices('ABCDEFGHJKLMNPQRSTUVWXYZ0123456789',k=4))}-{''.join(random.choices('ABCDEFGHJKLMNPQRSTUVWXYZ0123456789',k=4))}"
@@ -115,7 +110,7 @@ def make_qr(amount, order_id):
     buf.seek(0)
     return buf
 
-# ========== KEYBOARDS ==========
+# ---------- Keyboards ----------
 def main_menu():
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
@@ -153,7 +148,7 @@ def plans_kb(product):
     kb.add(InlineKeyboardButton("◀️ Back", callback_data="back", style='primary'))
     return kb
 
-# ========== BOT HANDLERS ==========
+# ---------- Bot Handlers ----------
 @bot.message_handler(commands=['start'])
 def start(msg):
     bot.send_message(msg.chat.id, f"👑 *REDDY PREMIUM*\n\nHello {msg.from_user.first_name}!\n\n💎 Trusted License Shop\n⚡ UPI Auto-Delivery\n🛡️ 100% Genuine\n\n👇 Choose option", parse_mode="Markdown", reply_markup=main_menu())
@@ -208,7 +203,9 @@ def handle(call):
         qr = make_qr(amount, order_id)
         caption = f"💳 *UPI Payment*\n\nOrder: `{order_id}`\nProduct: {PRODUCTS[product]['name']}\nAmount: ₹{amount}\n\nUPI ID: `{UPI_ID}`\n\n*Scan QR or Pay & SMS will auto-verify*"
         bot.delete_message(cid, call.message.id)
-        bot.send_photo(cid, qr, caption=caption, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup().add(InlineKeyboardButton("❌ Cancel", callback_data=f"cancel_{order_id}", style='danger')))
+        kb = InlineKeyboardMarkup()
+        kb.add(InlineKeyboardButton("❌ Cancel", callback_data=f"cancel_{order_id}", style='danger'))
+        bot.send_photo(cid, qr, caption=caption, parse_mode="Markdown", reply_markup=kb)
         threading.Timer(900, lambda: expire_order(order_id, cid)).start()
     elif data_cb.startswith("cancel_"):
         order_id = data_cb.split("_")[1]
@@ -224,47 +221,37 @@ def expire_order(order_id, cid):
         except:
             pass
 
-# ========== SMS WEBHOOK (UPI AUTO VERIFY) ==========
+# ---------- SMS Webhook (UPI Auto Verify) ----------
 @app.route('/sms_webhook', methods=['POST'])
 def sms_webhook():
-    """
-    Expects JSON: {"secret": "MySecretKey123", "sms_body": "...", "from": "PhonePe"}
-    Extract transaction ID and amount, then match with pending_orders.
-    """
-    data = request.json
-    if data.get('secret') != SMS_WEBHOOK_SECRET:
+    data_json = request.json
+    if data_json.get('secret') != SMS_WEBHOOK_SECRET:
         return jsonify({"error": "Unauthorized"}), 401
 
-    sms_text = data.get('sms_body', '')
-    sender = data.get('from', '')
-
-    # Extract UPI transaction ID (common pattern: "TXN1234567890")
+    sms_text = data_json.get('sms_body', '')
+    # Extract transaction ID
     txn_match = re.search(r'TXN[0-9]{10,}', sms_text)
     if not txn_match:
-        return jsonify({"error": "No transaction ID found"}), 400
+        return jsonify({"error": "No TXN ID"}), 400
     txn_id = txn_match.group()
-
-    # Avoid duplicate processing
     if txn_id in processed_txns:
         return jsonify({"status": "already_processed"}), 200
     processed_txns.add(txn_id)
 
-    # Extract amount (simple pattern: "Rs. 149" or "₹149")
+    # Extract amount
     amount_match = re.search(r'[Rs₹]+\.?\s?(\d+)', sms_text, re.IGNORECASE)
     amount = int(amount_match.group(1)) if amount_match else 0
 
-    # Find matching pending order by amount (and optionally UPI reference)
-    matched_order = None
+    # Match pending order
+    matched = None
     for oid, order in pending_orders.items():
         if order['amount'] == amount:
-            matched_order = oid
+            matched = oid
             break
-
-    if not matched_order:
+    if not matched:
         return jsonify({"error": "No pending order with that amount"}), 404
 
-    order = pending_orders[matched_order]
-    # Deliver key
+    order = pending_orders[matched]
     key = pop_key(order['product'], order['duration'])
     if not key:
         key = generate_key(order['product'])
@@ -280,11 +267,11 @@ def sms_webhook():
         "txn_id": txn_id
     })
     bot.send_message(order['chat_id'], f"✅ *Payment Verified!*\n\n🔑 Your Key: `{key}`\n\nThank you!", parse_mode="Markdown", reply_markup=main_menu())
-    del pending_orders[matched_order]
+    del pending_orders[matched]
 
-    return jsonify({"status": "key_delivered", "order_id": matched_order}), 200
+    return jsonify({"status": "key_delivered", "order_id": matched}), 200
 
-# ========== ADMIN PANEL ROUTES (simplified) ==========
+# ---------- Admin Panel Routes (minimal) ----------
 @app.route('/')
 def home():
     return jsonify({"status": "online", "auto_upi": True})
@@ -295,9 +282,13 @@ def admin():
 
 @app.route('/api/dashboard')
 def dashboard():
-    stats = get_stats()
     total_keys = sum(get_stock(p,"day")+get_stock(p,"week")+get_stock(p,"month") for p in PRODUCTS)
-    return jsonify({"total_keys": total_keys, "total_orders": stats["total_orders"], "total_users": len(data["users"]), "total_revenue": stats["total_revenue"]})
+    return jsonify({
+        "total_keys": total_keys,
+        "total_orders": len(data["orders"]),
+        "total_users": len(data["users"]),
+        "total_revenue": sum(o.get("amount",0) for o in data["orders"])
+    })
 
 @app.route('/api/keys/all')
 def keys_all():
