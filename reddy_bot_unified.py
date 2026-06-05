@@ -1,27 +1,26 @@
 #!/usr/bin/env python3
-# REDDY PREMIUM BOT – COLOURFUL BUTTONS (GREEN/BLUE/RED)
+"""
+REDDY PREMIUM BOT – UPI AUTO VERIFY (via SMS Forwarder)
+"""
 
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-import random, string, datetime, threading, time, os, json, hashlib, hmac, schedule
+import random, string, datetime, threading, time, os, json, re
 from flask import Flask, request, jsonify, send_from_directory
-import razorpay
 
-# ---------- CONFIG ----------
+# ========== CONFIG ==========
 BOT_TOKEN = "8646356913:AAHqS40oeDQQPZRik2GYcE0nAjyQfdo5QVo"
 ADMIN_ID = "1648621649"
 DATA_FILE = "bot_data.json"
-
-RAZORPAY_KEY_ID = "rzp_test_Swf7omML9UnAHQ"
-RAZORPAY_KEY_SECRET = "70nCcG6l2fOXSijMSDB7UFuU"
-RAZORPAY_WEBHOOK_SECRET = "MyRzpWebhookSecret@2024"
-razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
+UPI_ID = "q542401897@ybl"  # Your UPI ID
+SMS_WEBHOOK_SECRET = "MySecretKey123"  # Optional: for security
 
 app = Flask(__name__)
 bot = telebot.TeleBot(BOT_TOKEN)
-pending_orders = {}
+pending_orders = {}   # order_id -> details
+processed_txns = set()  # to avoid duplicate processing
 
-# ---------- DATA ----------
+# ========== DATA STORAGE ==========
 def load_data():
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, "r") as f:
@@ -29,8 +28,7 @@ def load_data():
     return {
         "users": {},
         "orders": [],
-        "keys": {p: {"day": [], "week": [], "month": []} for p in ["deadeye","vision","rage","winios","kingios"]},
-        "processed_payments": []
+        "keys": {p: {"day": [], "week": [], "month": []} for p in ["deadeye","vision","rage","winios","kingios"]}
     }
 
 def save_data(data):
@@ -38,8 +36,8 @@ def save_data(data):
         json.dump(data, f, indent=2)
 
 data = load_data()
-processed_payments = set(data.get("processed_payments", []))
 
+# ========== PRODUCTS & PRICES ==========
 PRODUCTS = {
     "deadeye": {"name": "Deadeye", "emoji": "🎯"},
     "vision": {"name": "Vision", "emoji": "👁️"},
@@ -64,7 +62,7 @@ PREFIX = {
     "kingios": "KING",
 }
 
-# ---------- HELPERS ----------
+# ========== HELPERS ==========
 def get_stock(product, duration):
     return len(data["keys"].get(product, {}).get(duration, []))
 
@@ -99,18 +97,32 @@ def save_order(order_data):
     save_data(data)
 
 def get_stats():
-    total_orders = len(data["orders"])
-    total_revenue = sum(o.get("amount", 0) for o in data["orders"])
-    return {"total_orders": total_orders, "total_revenue": total_revenue}
+    return {"total_orders": len(data["orders"]), "total_revenue": sum(o.get("amount",0) for o in data["orders"])}
 
-# ---------- 🎨 COLOURFUL KEYBOARDS ----------
+def generate_key(product):
+    prefix = PREFIX.get(product, "KEY")
+    return f"{prefix}-{''.join(random.choices('ABCDEFGHJKLMNPQRSTUVWXYZ0123456789',k=4))}-{''.join(random.choices('ABCDEFGHJKLMNPQRSTUVWXYZ0123456789',k=4))}-{''.join(random.choices('ABCDEFGHJKLMNPQRSTUVWXYZ0123456789',k=4))}"
+
+def make_qr(amount, order_id):
+    import qrcode, io
+    upi = f"upi://pay?pa={UPI_ID}&pn=Reddy+Premium&am={amount}&tn={order_id}&cu=INR"
+    qr = qrcode.QRCode(box_size=8, border=2)
+    qr.add_data(upi)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="#1a1a2e", back_color="white")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return buf
+
+# ========== KEYBOARDS ==========
 def main_menu():
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
-        InlineKeyboardButton("🛒 Buy Licence", callback_data="buy", style='success'),  # Green
-        InlineKeyboardButton("🔑 My Keys", callback_data="mykeys", style='primary'),  # Blue
-        InlineKeyboardButton("📦 Stock", callback_data="stock", style='primary'),     # Blue
-        InlineKeyboardButton("💬 Support", callback_data="help", style='primary'),    # Blue
+        InlineKeyboardButton("🛒 Buy Now", callback_data="buy", style='success'),
+        InlineKeyboardButton("🔑 My Keys", callback_data="mykeys", style='primary'),
+        InlineKeyboardButton("📦 Stock", callback_data="stock", style='primary'),
+        InlineKeyboardButton("💬 Support", callback_data="help", style='primary'),
     )
     return kb
 
@@ -129,41 +141,22 @@ def plans_kb(product):
     day_stock = get_stock(product, "day")
     week_stock = get_stock(product, "week")
     month_stock = get_stock(product, "month")
-    
     day_style = 'success' if day_stock > 0 else 'danger'
     week_style = 'success' if week_stock > 0 else 'danger'
     month_style = 'success' if month_stock > 0 else 'danger'
-    
     day_btn = f"📅 1 Day - ₹{p['day']}" + (" 🔴" if day_stock == 0 else "")
     week_btn = f"📅 7 Days - ₹{p['week']}" + (" 🔴" if week_stock == 0 else "")
     month_btn = f"📅 30 Days - ₹{p['month']}" + (" 🔴" if month_stock == 0 else "")
-    
     kb.add(InlineKeyboardButton(day_btn, callback_data=f"plan_{product}_day", style=day_style))
     kb.add(InlineKeyboardButton(week_btn, callback_data=f"plan_{product}_week", style=week_style))
     kb.add(InlineKeyboardButton(month_btn, callback_data=f"plan_{product}_month", style=month_style))
     kb.add(InlineKeyboardButton("◀️ Back", callback_data="back", style='primary'))
     return kb
 
-def payment_kb(order_id, payment_url):
-    kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton("💳 Pay Now", url=payment_url, style='success'))
-    kb.add(InlineKeyboardButton("❌ Cancel", callback_data=f"cancel_{order_id}", style='danger'))
-    return kb
-
-# ---------- BOT HANDLERS ----------
+# ========== BOT HANDLERS ==========
 @bot.message_handler(commands=['start'])
 def start(msg):
-    text = f"""✨👑 *REDDY PREMIUM* 👑✨
-
-Hello {msg.from_user.first_name}!
-
-💎 Trusted License Shop
-⚡ Instant Delivery (Razorpay)
-🛡️ 100% Genuine Keys
-
-👇 Choose option
-"""
-    bot.send_message(msg.chat.id, text, parse_mode="Markdown", reply_markup=main_menu())
+    bot.send_message(msg.chat.id, f"👑 *REDDY PREMIUM*\n\nHello {msg.from_user.first_name}!\n\n💎 Trusted License Shop\n⚡ UPI Auto-Delivery\n🛡️ 100% Genuine\n\n👇 Choose option", parse_mode="Markdown", reply_markup=main_menu())
 
 @bot.callback_query_handler(func=lambda c: True)
 def handle(call):
@@ -174,108 +167,127 @@ def handle(call):
 
     if data_cb == "back":
         bot.edit_message_text("👇 *Main Menu*", cid, call.message.id, parse_mode="Markdown", reply_markup=main_menu())
-    
     elif data_cb == "buy":
         bot.edit_message_text("🛒 *Select Product*", cid, call.message.id, parse_mode="Markdown", reply_markup=products_kb())
-    
     elif data_cb == "stock":
-        text = "📦 *Stock Available*\n\n"
+        text = "📦 *Stock*\n\n"
         for key, p in PRODUCTS.items():
-            d = get_stock(key, "day")
-            w = get_stock(key, "week")
-            m = get_stock(key, "month")
-            if d + w + m > 0:
-                text += f"{p['emoji']} *{p['name']}*\n   1D: {d} | 7D: {w} | 30D: {m}\n\n"
-            else:
-                text += f"{p['emoji']} *{p['name']}* - 🔴 Out of Stock\n\n"
+            d,w,m = get_stock(key,"day"), get_stock(key,"week"), get_stock(key,"month")
+            text += f"{p['emoji']} {p['name']}: 1D:{d} 7D:{w} 30D:{m}\n"
         bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=main_menu())
-    
     elif data_cb == "mykeys":
-        uid_str = str(uid)
-        user_keys = data["users"].get(uid_str, {}).get("keys", [])
+        user_keys = data["users"].get(str(uid), {}).get("keys", [])
         if not user_keys:
-            text = "🔑 *My Keys*\n\nYou have no keys yet.\nUse Buy option."
-            bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=main_menu())
+            bot.edit_message_text("🔑 *My Keys*\n\nNo keys yet.", cid, call.message.id, parse_mode="Markdown", reply_markup=main_menu())
         else:
-            text = "🔑 *Your Keys*\n\n"
+            txt = "🔑 *Your Keys*\n\n"
             for k in user_keys[-5:][::-1]:
-                text += f"📦 {k['product']} ({k['duration']})\n🔑 `{k['key']}`\n📅 {k['date']}\n\n"
-            bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=main_menu())
-    
+                txt += f"📦 {k['product']} ({k['duration']})\n🔑 `{k['key']}`\n📅 {k['date']}\n\n"
+            bot.edit_message_text(txt, cid, call.message.id, parse_mode="Markdown", reply_markup=main_menu())
     elif data_cb == "help":
         kb = InlineKeyboardMarkup()
         kb.add(InlineKeyboardButton("📞 Contact", url="https://t.me/ReddyHack", style='primary'))
         kb.add(InlineKeyboardButton("◀️ Back", callback_data="back", style='primary'))
-        text = "💬 *Support*\n\n📞 @ReddyHack\n24/7 Available"
-        bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=kb)
-    
+        bot.edit_message_text("💬 *Support*\n\n@ReddyHack\n24/7", cid, call.message.id, parse_mode="Markdown", reply_markup=kb)
     elif data_cb.startswith("prod_"):
         product = data_cb.split("_")[1]
         p = PRODUCTS[product]
-        text = f"{p['emoji']} *{p['name']}*\n\n👇 *Choose your plan*"
-        bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=plans_kb(product))
-    
+        bot.edit_message_text(f"{p['emoji']} *{p['name']}*\n👇 Choose plan", cid, call.message.id, parse_mode="Markdown", reply_markup=plans_kb(product))
     elif data_cb.startswith("plan_"):
         _, product, duration = data_cb.split("_")
         if get_stock(product, duration) == 0:
-            bot.answer_callback_query(call.id, "❌ Sold out! Choose another.", show_alert=True)
+            bot.answer_callback_query(call.id, "Sold out!", show_alert=True)
             return
-        
         amount = PRICES[product][duration]
         order_id = f"R{int(time.time())}{random.randint(10,99)}"
-        
-        # Create Razorpay Order
-        try:
-            rzp_order = razorpay_client.order.create({
-                'amount': int(amount * 100),
-                'currency': 'INR',
-                'receipt': order_id,
-                'payment_capture': 1
-            })
-            payment_url = f"https://rzp.io/l/{rzp_order['id']}"  # simplified
-        except Exception as e:
-            bot.answer_callback_query(call.id, "Payment error! Try again.", show_alert=True)
-            return
-        
         pending_orders[order_id] = {
             "user_id": uid, "username": uname,
             "product": product, "duration": duration,
-            "amount": amount, "chat_id": cid,
-            "razorpay_order_id": rzp_order['id']
+            "amount": amount, "chat_id": cid
         }
-        
-        caption = f"💳 *Payment*\n\nOrder: `{order_id}`\nProduct: {PRODUCTS[product]['name']}\nDuration: {duration}\nAmount: ₹{amount}\n\n👉 Click below to pay"
+        qr = make_qr(amount, order_id)
+        caption = f"💳 *UPI Payment*\n\nOrder: `{order_id}`\nProduct: {PRODUCTS[product]['name']}\nAmount: ₹{amount}\n\nUPI ID: `{UPI_ID}`\n\n*Scan QR or Pay & SMS will auto-verify*"
         bot.delete_message(cid, call.message.id)
-        bot.send_message(cid, caption, parse_mode="Markdown", reply_markup=payment_kb(order_id, payment_url), disable_web_page_preview=True)
-        
+        bot.send_photo(cid, qr, caption=caption, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup().add(InlineKeyboardButton("❌ Cancel", callback_data=f"cancel_{order_id}", style='danger')))
         threading.Timer(900, lambda: expire_order(order_id, cid)).start()
-    
     elif data_cb.startswith("cancel_"):
         order_id = data_cb.split("_")[1]
         if order_id in pending_orders:
             del pending_orders[order_id]
-        bot.edit_message_text("❌ *Order Cancelled*", cid, call.message.id, parse_mode="Markdown", reply_markup=main_menu())
-        bot.send_message(cid, "🔄 Start again 👇", reply_markup=main_menu())
+        bot.edit_message_text("❌ Cancelled", cid, call.message.id, reply_markup=main_menu())
 
 def expire_order(order_id, cid):
     if order_id in pending_orders:
         del pending_orders[order_id]
         try:
-            bot.send_message(cid, "⌛ *Order expired*\nPlease start fresh.", parse_mode="Markdown", reply_markup=main_menu())
+            bot.send_message(cid, "⌛ Order expired. Start fresh.", reply_markup=main_menu())
         except:
             pass
 
-# ---------- WEBHOOK ----------
-@app.route('/razorpay_webhook', methods=['POST'])
-def razorpay_webhook():
-    # Verify signature and deliver key (simplified)
-    # In production, verify signature using RAZORPAY_WEBHOOK_SECRET
-    return jsonify({"status": "ok"}), 200
+# ========== SMS WEBHOOK (UPI AUTO VERIFY) ==========
+@app.route('/sms_webhook', methods=['POST'])
+def sms_webhook():
+    """
+    Expects JSON: {"secret": "MySecretKey123", "sms_body": "...", "from": "PhonePe"}
+    Extract transaction ID and amount, then match with pending_orders.
+    """
+    data = request.json
+    if data.get('secret') != SMS_WEBHOOK_SECRET:
+        return jsonify({"error": "Unauthorized"}), 401
 
-# ---------- ADMIN API ----------
+    sms_text = data.get('sms_body', '')
+    sender = data.get('from', '')
+
+    # Extract UPI transaction ID (common pattern: "TXN1234567890")
+    txn_match = re.search(r'TXN[0-9]{10,}', sms_text)
+    if not txn_match:
+        return jsonify({"error": "No transaction ID found"}), 400
+    txn_id = txn_match.group()
+
+    # Avoid duplicate processing
+    if txn_id in processed_txns:
+        return jsonify({"status": "already_processed"}), 200
+    processed_txns.add(txn_id)
+
+    # Extract amount (simple pattern: "Rs. 149" or "₹149")
+    amount_match = re.search(r'[Rs₹]+\.?\s?(\d+)', sms_text, re.IGNORECASE)
+    amount = int(amount_match.group(1)) if amount_match else 0
+
+    # Find matching pending order by amount (and optionally UPI reference)
+    matched_order = None
+    for oid, order in pending_orders.items():
+        if order['amount'] == amount:
+            matched_order = oid
+            break
+
+    if not matched_order:
+        return jsonify({"error": "No pending order with that amount"}), 404
+
+    order = pending_orders[matched_order]
+    # Deliver key
+    key = pop_key(order['product'], order['duration'])
+    if not key:
+        key = generate_key(order['product'])
+
+    save_user_key(order['user_id'], order['username'], PRODUCTS[order['product']]['name'], order['duration'], key)
+    save_order({
+        "username": order['username'],
+        "product": PRODUCTS[order['product']]['name'],
+        "duration": order['duration'],
+        "amount": order['amount'],
+        "key": key,
+        "date": datetime.datetime.now().strftime("%d %b %Y %I:%M %p"),
+        "txn_id": txn_id
+    })
+    bot.send_message(order['chat_id'], f"✅ *Payment Verified!*\n\n🔑 Your Key: `{key}`\n\nThank you!", parse_mode="Markdown", reply_markup=main_menu())
+    del pending_orders[matched_order]
+
+    return jsonify({"status": "key_delivered", "order_id": matched_order}), 200
+
+# ========== ADMIN PANEL ROUTES (simplified) ==========
 @app.route('/')
 def home():
-    return jsonify({"status": "online"})
+    return jsonify({"status": "online", "auto_upi": True})
 
 @app.route('/admin')
 def admin():
@@ -284,13 +296,8 @@ def admin():
 @app.route('/api/dashboard')
 def dashboard():
     stats = get_stats()
-    total_keys = sum(get_stock(p, "day") + get_stock(p, "week") + get_stock(p, "month") for p in PRODUCTS)
-    return jsonify({
-        "total_keys": total_keys,
-        "total_orders": stats["total_orders"],
-        "total_users": len(data["users"]),
-        "total_revenue": stats["total_revenue"]
-    })
+    total_keys = sum(get_stock(p,"day")+get_stock(p,"week")+get_stock(p,"month") for p in PRODUCTS)
+    return jsonify({"total_keys": total_keys, "total_orders": stats["total_orders"], "total_users": len(data["users"]), "total_revenue": stats["total_revenue"]})
 
 @app.route('/api/keys/all')
 def keys_all():
@@ -298,29 +305,21 @@ def keys_all():
 
 @app.route('/api/keys/<product>/<duration>')
 def get_keys(product, duration):
-    keys = data["keys"].get(product, {}).get(duration, [])
-    return jsonify({"keys": keys})
+    return jsonify({"keys": data["keys"].get(product, {}).get(duration, [])})
 
 @app.route('/api/keys', methods=['POST'])
 def add_keys():
     body = request.json
-    product = body['product']
-    duration = body['duration']
-    key_list = body['keys']
-    add_keys_to_db(product, duration, key_list)
+    add_keys_to_db(body['product'], body['duration'], body['keys'])
     return jsonify({"ok": True})
 
 @app.route('/api/keys/generate', methods=['POST'])
 def gen_keys():
     body = request.json
-    product = body['product']
-    duration = body['duration']
-    count = body['count']
-    prefix = PREFIX.get(product, "KEY")
-    def g():
-        return f"{prefix}-{''.join(random.choices('ABCDEFGHJKLMNPQRSTUVWXYZ0123456789',k=4))}-{''.join(random.choices('ABCDEFGHJKLMNPQRSTUVWXYZ0123456789',k=4))}-{''.join(random.choices('ABCDEFGHJKLMNPQRSTUVWXYZ0123456789',k=4))}"
-    new_keys = [g() for _ in range(count)]
-    add_keys_to_db(product, duration, new_keys)
+    p,d,c = body['product'], body['duration'], body['count']
+    pre = PREFIX.get(p, "KEY")
+    new = [f"{pre}-{''.join(random.choices('ABCDEFGHJKLMNPQRSTUVWXYZ0123456789',k=4))}-{''.join(random.choices('ABCDEFGHJKLMNPQRSTUVWXYZ0123456789',k=4))}-{''.join(random.choices('ABCDEFGHJKLMNPQRSTUVWXYZ0123456789',k=4))}" for _ in range(c)]
+    add_keys_to_db(p, d, new)
     return jsonify({"ok": True})
 
 @app.route('/api/keys/<product>/<duration>', methods=['DELETE'])
@@ -368,7 +367,6 @@ def webhook():
     return '', 403
 
 if __name__ == "__main__":
-    print("Starting bot with colourful buttons (Green/Blue/Red)...")
     bot.remove_webhook()
     url = os.environ.get('RENDER_EXTERNAL_URL', 'https://reddy-bot.onrender.com')
     bot.set_webhook(f"{url}/webhook")
