@@ -1,42 +1,182 @@
 #!/usr/bin/env python3
 """
-REDDY PREMIUM BOT – UPI AUTO VERIFY (SMS FORWARDER)
+REDDY PREMIUM BOT – SQLITE (NO MORE KEY LOSS)
 """
 
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-import random, string, datetime, threading, time, os, json, re
+import random, string, datetime, threading, time, os, json, re, sqlite3
 from flask import Flask, request, jsonify, send_from_directory
 
-# ========== CONFIG (Change these on Render via Env Vars) ==========
+# ========== CONFIG ==========
 BOT_TOKEN = "8646356913:AAHqS40oeDQQPZRik2GYcE0nAjyQfdo5QVo"
 ADMIN_ID = "1648621649"
-DATA_FILE = "bot_data.json"
-UPI_ID = "q542401897@ybl"
-SMS_WEBHOOK_SECRET = "MySecretKey123"   # ← same as in SMS Forwarder app
+DB_FILE = "bot_data.db"  # SQLite database file
 
-app = Flask(__name__)
-bot = telebot.TeleBot(BOT_TOKEN)
-pending_orders = {}
-processed_txns = set()
+# ========== DATABASE SETUP ==========
+def init_db():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    # Users table
+    c.execute('''CREATE TABLE IF NOT EXISTS users (
+        user_id TEXT PRIMARY KEY,
+        username TEXT,
+        keys_data TEXT
+    )''')
+    # Orders table
+    c.execute('''CREATE TABLE IF NOT EXISTS orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT,
+        product TEXT,
+        duration TEXT,
+        amount INTEGER,
+        key TEXT,
+        date TEXT,
+        payment_id TEXT
+    )''')
+    # Keys table (product, duration, key list stored as JSON)
+    c.execute('''CREATE TABLE IF NOT EXISTS keys_pool (
+        product TEXT,
+        duration TEXT,
+        key TEXT,
+        added_date TEXT
+    )''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_keys ON keys_pool (product, duration)')
+    # Stats table
+    c.execute('''CREATE TABLE IF NOT EXISTS stats (
+        key TEXT PRIMARY KEY,
+        value INTEGER
+    )''')
+    c.execute("INSERT OR IGNORE INTO stats (key, value) VALUES ('total_orders', 0)")
+    c.execute("INSERT OR IGNORE INTO stats (key, value) VALUES ('total_revenue', 0)")
+    conn.commit()
+    conn.close()
 
-# ---------- Data Storage ----------
-def load_data():
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "r") as f:
-            return json.load(f)
-    return {
-        "users": {},
-        "orders": [],
-        "keys": {p: {"day": [], "week": [], "month": []} for p in ["deadeye","vision","rage","winios","kingios"]}
-    }
+init_db()
 
-def save_data(data):
-    with open(DATA_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+# Helper functions using SQLite
+def get_stock(product, duration):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT COUNT(*) FROM keys_pool WHERE product=? AND duration=?", (product, duration))
+    count = c.fetchone()[0]
+    conn.close()
+    return count
 
-data = load_data()
+def pop_key(product, duration):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT key FROM keys_pool WHERE product=? AND duration=? LIMIT 1", (product, duration))
+    row = c.fetchone()
+    if row:
+        key = row[0]
+        c.execute("DELETE FROM keys_pool WHERE product=? AND duration=? AND key=? LIMIT 1", (product, duration, key))
+        conn.commit()
+        conn.close()
+        # Log key pop (for debugging)
+        print(f"[POP] {product} {duration} -> {key}")
+        return key
+    conn.close()
+    return None
 
+def add_keys_to_db(product, duration, key_list):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    now = datetime.datetime.now().isoformat()
+    for k in key_list:
+        c.execute("INSERT INTO keys_pool (product, duration, key, added_date) VALUES (?,?,?,?)",
+                  (product, duration, k, now))
+    conn.commit()
+    conn.close()
+    print(f"[ADD] {product} {duration} -> {len(key_list)} keys")
+
+def save_user_key(user_id, username, product_name, duration, key):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    # Get existing keys_data
+    c.execute("SELECT keys_data FROM users WHERE user_id=?", (str(user_id),))
+    row = c.fetchone()
+    if row:
+        keys_list = json.loads(row[0])
+    else:
+        keys_list = []
+    keys_list.append({
+        "product": product_name,
+        "duration": duration,
+        "key": key,
+        "date": datetime.datetime.now().strftime("%d %b %Y %I:%M %p")
+    })
+    c.execute("INSERT OR REPLACE INTO users (user_id, username, keys_data) VALUES (?,?,?)",
+              (str(user_id), username, json.dumps(keys_list)))
+    conn.commit()
+    conn.close()
+
+def save_order(order_data):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("""INSERT INTO orders (username, product, duration, amount, key, date, payment_id)
+                 VALUES (?,?,?,?,?,?,?)""",
+              (order_data['username'], order_data['product'], order_data['duration'],
+               order_data['amount'], order_data['key'], order_data['date'], order_data.get('payment_id', '')))
+    c.execute("UPDATE stats SET value = value + 1 WHERE key = 'total_orders'")
+    c.execute("UPDATE stats SET value = value + ? WHERE key = 'total_revenue'", (order_data['amount'],))
+    conn.commit()
+    conn.close()
+
+def get_stats():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT value FROM stats WHERE key='total_orders'")
+    total_orders = c.fetchone()[0]
+    c.execute("SELECT value FROM stats WHERE key='total_revenue'")
+    total_revenue = c.fetchone()[0]
+    conn.close()
+    return {"total_orders": total_orders, "total_revenue": total_revenue}
+
+def get_all_keys():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT product, duration, key FROM keys_pool")
+    rows = c.fetchall()
+    conn.close()
+    keys_dict = {}
+    for p in PRODUCTS:
+        keys_dict[p] = {"day": [], "week": [], "month": []}
+    for product, duration, key in rows:
+        if product in keys_dict:
+            keys_dict[product][duration].append(key)
+    return keys_dict
+
+def get_all_users():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT user_id, username, keys_data FROM users")
+    rows = c.fetchall()
+    conn.close()
+    users = {}
+    for uid, uname, kdata in rows:
+        users[uid] = {"username": uname, "keys": json.loads(kdata) if kdata else []}
+    return users
+
+def get_all_orders():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT username, product, duration, amount, key, date FROM orders ORDER BY id DESC")
+    rows = c.fetchall()
+    conn.close()
+    return [{"username": r[0], "product": r[1], "duration": r[2], "amount": r[3], "key": r[4], "date": r[5]} for r in rows]
+
+def clear_keys_pool(product, duration):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("DELETE FROM keys_pool WHERE product=? AND duration=?", (product, duration))
+    conn.commit()
+    conn.close()
+
+def generate_key(prefix):
+    return f"{prefix}-{''.join(random.choices('ABCDEFGHJKLMNPQRSTUVWXYZ0123456789',k=4))}-{''.join(random.choices('ABCDEFGHJKLMNPQRSTUVWXYZ0123456789',k=4))}-{''.join(random.choices('ABCDEFGHJKLMNPQRSTUVWXYZ0123456789',k=4))}"
+
+# ========== PRODUCTS & PRICES (same as before) ==========
 PRODUCTS = {
     "deadeye": {"name": "Deadeye", "emoji": "🎯"},
     "vision": {"name": "Vision", "emoji": "👁️"},
@@ -44,7 +184,6 @@ PRODUCTS = {
     "winios": {"name": "WinIOS", "emoji": "💻"},
     "kingios": {"name": "KingIOS", "emoji": "👑"},
 }
-
 PRICES = {
     "deadeye": {"day": 149, "week": 699, "month": 1299},
     "vision": {"day": 199, "week": 699, "month": 2200},
@@ -52,7 +191,6 @@ PRICES = {
     "winios": {"day": 149, "week": 599, "month": 999},
     "kingios": {"day": 199, "week": 699, "month": 2200},
 }
-
 PREFIX = {
     "deadeye": "DEAD",
     "vision": "VIS",
@@ -61,43 +199,15 @@ PREFIX = {
     "kingios": "KING",
 }
 
-def get_stock(product, duration):
-    return len(data["keys"].get(product, {}).get(duration, []))
+UPI_ID = "q542401897@ybl"
+SMS_WEBHOOK_SECRET = "MySecretKey123"
 
-def pop_key(product, duration):
-    pool = data["keys"].get(product, {}).get(duration, [])
-    if pool:
-        key = pool.pop(0)
-        save_data(data)
-        return key
-    return None
+app = Flask(__name__)
+bot = telebot.TeleBot(BOT_TOKEN)
+pending_orders = {}
+processed_txns = set()
 
-def add_keys_to_db(product, duration, key_list):
-    if product not in data["keys"]:
-        data["keys"][product] = {"day": [], "week": [], "month": []}
-    data["keys"][product][duration].extend(key_list)
-    save_data(data)
-
-def save_user_key(user_id, username, product_name, duration, key):
-    uid = str(user_id)
-    if uid not in data["users"]:
-        data["users"][uid] = {"username": username, "keys": []}
-    data["users"][uid]["keys"].append({
-        "product": product_name,
-        "duration": duration,
-        "key": key,
-        "date": datetime.datetime.now().strftime("%d %b %Y %I:%M %p")
-    })
-    save_data(data)
-
-def save_order(order_data):
-    data["orders"].insert(0, order_data)
-    save_data(data)
-
-def generate_key(product):
-    prefix = PREFIX.get(product, "KEY")
-    return f"{prefix}-{''.join(random.choices('ABCDEFGHJKLMNPQRSTUVWXYZ0123456789',k=4))}-{''.join(random.choices('ABCDEFGHJKLMNPQRSTUVWXYZ0123456789',k=4))}-{''.join(random.choices('ABCDEFGHJKLMNPQRSTUVWXYZ0123456789',k=4))}"
-
+# ========== QR CODE FUNCTION ==========
 def make_qr(amount, order_id):
     import qrcode, io
     upi = f"upi://pay?pa={UPI_ID}&pn=Reddy+Premium&am={amount}&tn={order_id}&cu=INR"
@@ -110,7 +220,7 @@ def make_qr(amount, order_id):
     buf.seek(0)
     return buf
 
-# ---------- Keyboards ----------
+# ========== KEYBOARDS (same, colorful) ==========
 def main_menu():
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
@@ -148,7 +258,7 @@ def plans_kb(product):
     kb.add(InlineKeyboardButton("◀️ Back", callback_data="back", style='primary'))
     return kb
 
-# ---------- Bot Handlers ----------
+# ========== BOT HANDLERS (same as before, but using SQLite functions) ==========
 @bot.message_handler(commands=['start'])
 def start(msg):
     bot.send_message(msg.chat.id, f"👑 *REDDY PREMIUM*\n\nHello {msg.from_user.first_name}!\n\n💎 Trusted License Shop\n⚡ UPI Auto-Delivery\n🛡️ 100% Genuine\n\n👇 Choose option", parse_mode="Markdown", reply_markup=main_menu())
@@ -171,7 +281,12 @@ def handle(call):
             text += f"{p['emoji']} {p['name']}: 1D:{d} 7D:{w} 30D:{m}\n"
         bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=main_menu())
     elif data_cb == "mykeys":
-        user_keys = data["users"].get(str(uid), {}).get("keys", [])
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        c.execute("SELECT keys_data FROM users WHERE user_id=?", (str(uid),))
+        row = c.fetchone()
+        conn.close()
+        user_keys = json.loads(row[0]) if row else []
         if not user_keys:
             bot.edit_message_text("🔑 *My Keys*\n\nNo keys yet.", cid, call.message.id, parse_mode="Markdown", reply_markup=main_menu())
         else:
@@ -221,15 +336,13 @@ def expire_order(order_id, cid):
         except:
             pass
 
-# ---------- SMS Webhook (UPI Auto Verify) ----------
+# ========== SMS WEBHOOK ==========
 @app.route('/sms_webhook', methods=['POST'])
 def sms_webhook():
     data_json = request.json
     if data_json.get('secret') != SMS_WEBHOOK_SECRET:
         return jsonify({"error": "Unauthorized"}), 401
-
     sms_text = data_json.get('sms_body', '')
-    # Extract transaction ID
     txn_match = re.search(r'TXN[0-9]{10,}', sms_text)
     if not txn_match:
         return jsonify({"error": "No TXN ID"}), 400
@@ -237,12 +350,8 @@ def sms_webhook():
     if txn_id in processed_txns:
         return jsonify({"status": "already_processed"}), 200
     processed_txns.add(txn_id)
-
-    # Extract amount
     amount_match = re.search(r'[Rs₹]+\.?\s?(\d+)', sms_text, re.IGNORECASE)
     amount = int(amount_match.group(1)) if amount_match else 0
-
-    # Match pending order
     matched = None
     for oid, order in pending_orders.items():
         if order['amount'] == amount:
@@ -250,12 +359,10 @@ def sms_webhook():
             break
     if not matched:
         return jsonify({"error": "No pending order with that amount"}), 404
-
     order = pending_orders[matched]
     key = pop_key(order['product'], order['duration'])
     if not key:
-        key = generate_key(order['product'])
-
+        key = generate_key(PREFIX[order['product']])
     save_user_key(order['user_id'], order['username'], PRODUCTS[order['product']]['name'], order['duration'], key)
     save_order({
         "username": order['username'],
@@ -264,17 +371,16 @@ def sms_webhook():
         "amount": order['amount'],
         "key": key,
         "date": datetime.datetime.now().strftime("%d %b %Y %I:%M %p"),
-        "txn_id": txn_id
+        "payment_id": txn_id
     })
     bot.send_message(order['chat_id'], f"✅ *Payment Verified!*\n\n🔑 Your Key: `{key}`\n\nThank you!", parse_mode="Markdown", reply_markup=main_menu())
     del pending_orders[matched]
-
     return jsonify({"status": "key_delivered", "order_id": matched}), 200
 
-# ---------- Admin Panel Routes (minimal) ----------
+# ========== ADMIN PANEL ROUTES (updated for SQLite) ==========
 @app.route('/')
 def home():
-    return jsonify({"status": "online", "auto_upi": True})
+    return jsonify({"status": "online", "storage": "sqlite"})
 
 @app.route('/admin')
 def admin():
@@ -282,42 +388,52 @@ def admin():
 
 @app.route('/api/dashboard')
 def dashboard():
-    total_keys = sum(get_stock(p,"day")+get_stock(p,"week")+get_stock(p,"month") for p in PRODUCTS)
+    stats = get_stats()
+    total_keys = sum(get_stock(p, "day") + get_stock(p, "week") + get_stock(p, "month") for p in PRODUCTS)
+    total_users = len(get_all_users())
     return jsonify({
         "total_keys": total_keys,
-        "total_orders": len(data["orders"]),
-        "total_users": len(data["users"]),
-        "total_revenue": sum(o.get("amount",0) for o in data["orders"])
+        "total_orders": stats["total_orders"],
+        "total_users": total_users,
+        "total_revenue": stats["total_revenue"]
     })
 
 @app.route('/api/keys/all')
 def keys_all():
-    return jsonify(data["keys"])
+    return jsonify(get_all_keys())
 
 @app.route('/api/keys/<product>/<duration>')
 def get_keys(product, duration):
-    return jsonify({"keys": data["keys"].get(product, {}).get(duration, [])})
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT key FROM keys_pool WHERE product=? AND duration=?", (product, duration))
+    keys = [row[0] for row in c.fetchall()]
+    conn.close()
+    return jsonify({"keys": keys})
 
 @app.route('/api/keys', methods=['POST'])
 def add_keys():
     body = request.json
-    add_keys_to_db(body['product'], body['duration'], body['keys'])
+    product = body['product']
+    duration = body['duration']
+    key_list = body['keys']
+    add_keys_to_db(product, duration, key_list)
     return jsonify({"ok": True})
 
 @app.route('/api/keys/generate', methods=['POST'])
 def gen_keys():
     body = request.json
-    p,d,c = body['product'], body['duration'], body['count']
-    pre = PREFIX.get(p, "KEY")
-    new = [f"{pre}-{''.join(random.choices('ABCDEFGHJKLMNPQRSTUVWXYZ0123456789',k=4))}-{''.join(random.choices('ABCDEFGHJKLMNPQRSTUVWXYZ0123456789',k=4))}-{''.join(random.choices('ABCDEFGHJKLMNPQRSTUVWXYZ0123456789',k=4))}" for _ in range(c)]
-    add_keys_to_db(p, d, new)
+    product = body['product']
+    duration = body['duration']
+    count = body['count']
+    prefix = PREFIX.get(product, "KEY")
+    new_keys = [generate_key(prefix) for _ in range(count)]
+    add_keys_to_db(product, duration, new_keys)
     return jsonify({"ok": True})
 
 @app.route('/api/keys/<product>/<duration>', methods=['DELETE'])
 def clear_keys(product, duration):
-    if product in data["keys"]:
-        data["keys"][product][duration] = []
-        save_data(data)
+    clear_keys_pool(product, duration)
     return jsonify({"ok": True})
 
 @app.route('/api/prices')
@@ -332,17 +448,22 @@ def set_prices():
 
 @app.route('/api/orders')
 def get_orders():
-    return jsonify(data["orders"])
+    return jsonify(get_all_orders())
 
 @app.route('/api/orders', methods=['DELETE'])
 def del_orders():
-    data["orders"] = []
-    save_data(data)
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("DELETE FROM orders")
+    c.execute("UPDATE stats SET value = 0 WHERE key = 'total_orders'")
+    c.execute("UPDATE stats SET value = 0 WHERE key = 'total_revenue'")
+    conn.commit()
+    conn.close()
     return jsonify({"ok": True})
 
 @app.route('/api/users')
 def get_users():
-    return jsonify(data["users"])
+    return jsonify(get_all_users())
 
 @app.route('/api/auth', methods=['POST'])
 def auth():
@@ -358,6 +479,7 @@ def webhook():
     return '', 403
 
 if __name__ == "__main__":
+    print("Starting bot with SQLite (no more key loss)...")
     bot.remove_webhook()
     url = os.environ.get('RENDER_EXTERNAL_URL', 'https://reddy-bot.onrender.com')
     bot.set_webhook(f"{url}/webhook")
