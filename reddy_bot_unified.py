@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-REDDY PREMIUM BOT – FULL WORKING (Admin + Stock + UPI Auto)
+REDDY PREMIUM BOT – COMPLETE FIXED (Upigateway Webhook + Admin + Stock)
 """
 
 import telebot
@@ -48,9 +48,8 @@ def get_stock(product, duration):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute("SELECT COUNT(*) FROM keys_pool WHERE product=? AND duration=?", (product, duration))
-    count = c.fetchone()[0]
+    return c.fetchone()[0]
     conn.close()
-    return count
 
 def pop_key(product, duration):
     conn = sqlite3.connect(DB_FILE)
@@ -82,12 +81,7 @@ def save_user_key(user_id, username, product_name, duration, key):
     c.execute("SELECT keys_data FROM users WHERE user_id=?", (str(user_id),))
     row = c.fetchone()
     keys_list = json.loads(row[0]) if row else []
-    keys_list.append({
-        "product": product_name,
-        "duration": duration,
-        "key": key,
-        "date": datetime.datetime.now().strftime("%d %b %Y %I:%M %p")
-    })
+    keys_list.append({"product": product_name, "duration": duration, "key": key, "date": datetime.datetime.now().strftime("%d %b %Y %I:%M %p")})
     c.execute("INSERT OR REPLACE INTO users (user_id, username, keys_data) VALUES (?,?,?)", (str(user_id), username, json.dumps(keys_list)))
     conn.commit()
     conn.close()
@@ -135,6 +129,17 @@ def get_all_orders():
     conn.close()
     return [{"username": r[0], "product": r[1], "duration": r[2], "amount": r[3], "key": r[4], "date": r[5]} for r in rows]
 
+def make_qr(amount, order_id):
+    upi = f"upi://pay?pa={UPI_ID}&pn=Reddy+Premium&am={amount}&tn={order_id}&cu=INR"
+    qr = qrcode.QRCode(box_size=8, border=2)
+    qr.add_data(upi)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="#1a1a2e", back_color="white")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return buf
+
 PRODUCTS = {
     "deadeye": {"name": "Deadeye", "emoji": "🎯"},
     "vision": {"name": "Vision", "emoji": "👁️"},
@@ -156,17 +161,6 @@ PREFIX = {
     "winios": "WIN",
     "kingios": "KING",
 }
-
-def make_qr(amount, order_id):
-    upi = f"upi://pay?pa={UPI_ID}&pn=Reddy+Premium&am={amount}&tn={order_id}&cu=INR"
-    qr = qrcode.QRCode(box_size=8, border=2)
-    qr.add_data(upi)
-    qr.make(fit=True)
-    img = qr.make_image(fill_color="#1a1a2e", back_color="white")
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    buf.seek(0)
-    return buf
 
 # ========== KEYBOARDS ==========
 def main_menu():
@@ -197,12 +191,9 @@ def plans_kb(product):
     day_style = 'success' if day_stock > 0 else 'danger'
     week_style = 'success' if week_stock > 0 else 'danger'
     month_style = 'success' if month_stock > 0 else 'danger'
-    day_btn = f"📅 1 Day - ₹{p['day']}" + (" 🔴" if day_stock == 0 else "")
-    week_btn = f"📅 7 Days - ₹{p['week']}" + (" 🔴" if week_stock == 0 else "")
-    month_btn = f"📅 30 Days - ₹{p['month']}" + (" 🔴" if month_stock == 0 else "")
-    kb.add(InlineKeyboardButton(day_btn, callback_data=f"plan_{product}_day", style=day_style))
-    kb.add(InlineKeyboardButton(week_btn, callback_data=f"plan_{product}_week", style=week_style))
-    kb.add(InlineKeyboardButton(month_btn, callback_data=f"plan_{product}_month", style=month_style))
+    kb.add(InlineKeyboardButton(f"📅 1 Day - ₹{p['day']}" + (" 🔴" if day_stock == 0 else ""), callback_data=f"plan_{product}_day", style=day_style))
+    kb.add(InlineKeyboardButton(f"📅 7 Days - ₹{p['week']}" + (" 🔴" if week_stock == 0 else ""), callback_data=f"plan_{product}_week", style=week_style))
+    kb.add(InlineKeyboardButton(f"📅 30 Days - ₹{p['month']}" + (" 🔴" if month_stock == 0 else ""), callback_data=f"plan_{product}_month", style=month_style))
     kb.add(InlineKeyboardButton("◀️ Back", callback_data="back", style='primary'))
     return kb
 
@@ -251,8 +242,7 @@ def handle(call):
         bot.edit_message_text("💬 *Support*\n\n@ReddyHack\n24/7", cid, call.message.id, parse_mode="Markdown", reply_markup=kb)
     elif data.startswith("prod_"):
         product = data.split("_")[1]
-        p = PRODUCTS[product]
-        bot.edit_message_text(f"{p['emoji']} *{p['name']}*\n👇 Choose plan", cid, call.message.id, parse_mode="Markdown", reply_markup=plans_kb(product))
+        bot.edit_message_text(f"{PRODUCTS[product]['emoji']} *{PRODUCTS[product]['name']}*\n👇 Choose plan", cid, call.message.id, parse_mode="Markdown", reply_markup=plans_kb(product))
     elif data.startswith("plan_"):
         _, product, duration = data.split("_")
         if get_stock(product, duration) == 0:
@@ -260,20 +250,18 @@ def handle(call):
             return
         amount = PRICES[product][duration]
         order_id = f"R{int(time.time())}{random.randint(10,99)}"
-        pending_orders[order_id] = {
-            "user_id": uid, "username": uname,
-            "product": product, "duration": duration,
-            "amount": amount, "chat_id": cid
-        }
+        pending_orders[order_id] = {"user_id": uid, "username": uname, "product": product, "duration": duration, "amount": amount, "chat_id": cid}
+        
         qr = make_qr(amount, order_id)
-        caption = f"💳 *UPI Payment*\n\nOrder: `{order_id}`\nProduct: {PRODUCTS[product]['name']}\nAmount: ₹{amount}\n\nUPI ID: `{UPI_ID}`\n\nScan QR code to pay.\n**Bot will auto-check payment!**"
+        caption = f"💳 *UPI Payment*\n\nOrder: `{order_id}`\nProduct: {PRODUCTS[product]['name']}\nAmount: ₹{amount}\n\nUPI ID: `{UPI_ID}`\n\nScan QR to pay.\nBot will auto-detect payment!"
         kb = InlineKeyboardMarkup()
         kb.add(InlineKeyboardButton("❌ Cancel", callback_data=f"cancel_{order_id}", style='danger'))
         bot.delete_message(cid, call.message.id)
         bot.send_photo(cid, qr, caption=caption, parse_mode="Markdown", reply_markup=kb)
         
-        def poll_payment():
-            for _ in range(24):
+        # Polling thread
+        def poll():
+            for _ in range(60):
                 time.sleep(5)
                 if order_id not in pending_orders:
                     return
@@ -281,38 +269,58 @@ def handle(call):
                     resp = requests.post("https://upigateway.com/api/v1/check-payment", json={"client_txn_id": order_id, "api_key": UPIGATEWAY_API_KEY}, timeout=10)
                     if resp.status_code == 200 and resp.json().get("payment_received"):
                         order = pending_orders[order_id]
-                        key = pop_key(order['product'], order['duration'])
-                        if not key:
-                            key = generate_key(PREFIX.get(order['product'], "KEY"))
+                        key = pop_key(order['product'], order['duration']) or generate_key(PREFIX.get(order['product'], "KEY"))
                         save_user_key(order['user_id'], order['username'], PRODUCTS[order['product']]['name'], order['duration'], key)
-                        save_order({
-                            "username": order['username'],
-                            "product": PRODUCTS[order['product']]['name'],
-                            "duration": order['duration'],
-                            "amount": order['amount'],
-                            "key": key,
-                            "date": datetime.datetime.now().strftime("%d %b %Y %I:%M %p"),
-                            "payment_id": "upigateway"
-                        })
+                        save_order({"username": order['username'], "product": PRODUCTS[order['product']]['name'], "duration": order['duration'], "amount": order['amount'], "key": key, "date": datetime.datetime.now().strftime("%d %b %Y %I:%M %p"), "payment_id": "upigateway"})
                         bot.send_message(order['chat_id'], f"✅ *Payment Verified!*\n\n🔑 Your Key: `{key}`\n\nThank you!", parse_mode="Markdown")
                         del pending_orders[order_id]
                         return
-                except Exception as e:
-                    print(f"Polling error: {e}")
+                except:
+                    pass
             if order_id in pending_orders:
-                bot.send_message(cid, "⌛ Payment not received. Order expired.", reply_markup=main_menu())
+                bot.send_message(cid, "⌛ Payment timeout. Order expired.", reply_markup=main_menu())
                 del pending_orders[order_id]
-        threading.Thread(target=poll_payment, daemon=True).start()
+        threading.Thread(target=poll, daemon=True).start()
     elif data.startswith("cancel_"):
         order_id = data.split("_")[1]
-        if order_id in pending_orders:
-            del pending_orders[order_id]
+        pending_orders.pop(order_id, None)
         bot.edit_message_text("❌ Cancelled", cid, call.message.id, reply_markup=main_menu())
+
+# ========== WEBHOOK ROUTE (FIXED) ==========
+@app.route('/upigateway_webhook', methods=['POST'])
+def upigateway_webhook():
+    try:
+        data = request.get_json() or request.form.to_dict()
+        print(f"Webhook received: {data}")
+        
+        order_id = data.get('client_txn_id')
+        status = data.get('status')
+        amount = data.get('amount')
+        
+        if not order_id or status != 'success':
+            return jsonify({"error": "Invalid data"}), 400
+        
+        if order_id not in pending_orders:
+            return jsonify({"error": "Order not found"}), 404
+        
+        order = pending_orders[order_id]
+        if int(amount) != order['amount']:
+            return jsonify({"error": "Amount mismatch"}), 400
+        
+        key = pop_key(order['product'], order['duration']) or generate_key(PREFIX.get(order['product'], "KEY"))
+        save_user_key(order['user_id'], order['username'], PRODUCTS[order['product']]['name'], order['duration'], key)
+        save_order({"username": order['username'], "product": PRODUCTS[order['product']]['name'], "duration": order['duration'], "amount": order['amount'], "key": key, "date": datetime.datetime.now().strftime("%d %b %Y %I:%M %p"), "payment_id": data.get('id', 'webhook')})
+        bot.send_message(order['chat_id'], f"✅ *Payment Verified!*\n\n🔑 Your Key: `{key}`\n\nThank you!", parse_mode="Markdown")
+        del pending_orders[order_id]
+        return jsonify({"status": "ok"}), 200
+    except Exception as e:
+        print(f"Webhook error: {e}")
+        return jsonify({"error": str(e)}), 500
 
 # ========== ADMIN PANEL API ==========
 @app.route('/')
 def home():
-    return jsonify({"status": "online"})
+    return jsonify({"status": "online", "gateway": "upigateway"})
 
 @app.route('/admin')
 def admin():
@@ -322,12 +330,7 @@ def admin():
 def dashboard():
     stats = get_stats()
     total_keys = sum(get_stock(p, "day") + get_stock(p, "week") + get_stock(p, "month") for p in PRODUCTS)
-    return jsonify({
-        "total_keys": total_keys,
-        "total_orders": stats["total_orders"],
-        "total_users": len(get_all_users()),
-        "total_revenue": stats["total_revenue"]
-    })
+    return jsonify({"total_keys": total_keys, "total_orders": stats["total_orders"], "total_users": len(get_all_users()), "total_revenue": stats["total_revenue"]})
 
 @app.route('/api/keys/all')
 def keys_all():
@@ -353,28 +356,16 @@ def get_keys(product, duration):
 
 @app.route('/api/keys', methods=['POST'])
 def add_keys():
-    try:
-        body = request.json
-        product = body.get('product')
-        duration = body.get('duration')
-        key_list = body.get('keys', [])
-        if not product or not duration or not key_list:
-            return jsonify({"error": "Missing fields"}), 400
-        add_keys_to_db(product, duration, key_list)
-        return jsonify({"ok": True, "added": len(key_list)})
-    except Exception as e:
-        print(f"Add keys error: {e}")
-        return jsonify({"error": str(e)}), 500
+    body = request.json
+    add_keys_to_db(body['product'], body['duration'], body['keys'])
+    return jsonify({"ok": True})
 
 @app.route('/api/keys/generate', methods=['POST'])
 def gen_keys():
     body = request.json
-    product = body['product']
-    duration = body['duration']
-    count = body['count']
-    prefix = PREFIX.get(product, "KEY")
-    new_keys = [generate_key(prefix) for _ in range(count)]
-    add_keys_to_db(product, duration, new_keys)
+    prefix = PREFIX.get(body['product'], "KEY")
+    new_keys = [generate_key(prefix) for _ in range(body['count'])]
+    add_keys_to_db(body['product'], body['duration'], new_keys)
     return jsonify({"ok": True})
 
 @app.route('/api/keys/<product>/<duration>', methods=['DELETE'])
@@ -429,7 +420,7 @@ def webhook():
     return '', 403
 
 if __name__ == "__main__":
-    print("Starting bot with full features...")
+    print("Starting bot with webhook...")
     bot.remove_webhook()
     url = os.environ.get('RENDER_EXTERNAL_URL', 'https://reddy-bot.onrender.com')
     bot.set_webhook(f"{url}/webhook")
