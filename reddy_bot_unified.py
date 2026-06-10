@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-REDDY PREMIUM BOT – SQLite + UPI Auto Verify (iOS SMS Webhook)
+REDDY PREMIUM BOT – Upigateway Integration (Full Auto UPI)
 """
 
 import telebot
@@ -12,10 +12,10 @@ import threading
 import time
 import os
 import json
-import re
 import sqlite3
 import qrcode
 import io
+import requests
 from flask import Flask, request, jsonify, send_from_directory
 
 # ========== CONFIG ==========
@@ -23,43 +23,24 @@ BOT_TOKEN = "8646356913:AAHqS40oeDQQPZRik2GYcE0nAjyQfdo5QVo"
 ADMIN_ID = "1648621649"
 DB_FILE = "bot_data.db"
 UPI_ID = "q542401897@ybl"
-SMS_WEBHOOK_SECRET = "MySecretKey123"
+
+# Upigateway Configuration
+UPIGATEWAY_API_KEY = "3712981c-6df2-490c-af03-66bd0ec43b88"  # Your API Key
+UPIGATEWAY_API_URL = "https://upigateway.com/api/v1/create-order"
 
 app = Flask(__name__)
 bot = telebot.TeleBot(BOT_TOKEN)
-pending_orders = {}       # order_id -> details
-processed_txns = set()    # to avoid duplicate processing
+pending_orders = {}  # order_id -> details
 
-# ========== DATABASE SETUP (SQLite) ==========
+# ========== DATABASE SETUP ==========
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS users (
-        user_id TEXT PRIMARY KEY,
-        username TEXT,
-        keys_data TEXT
-    )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS orders (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT,
-        product TEXT,
-        duration TEXT,
-        amount INTEGER,
-        key TEXT,
-        date TEXT,
-        payment_id TEXT
-    )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS keys_pool (
-        product TEXT,
-        duration TEXT,
-        key TEXT,
-        added_date TEXT
-    )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS users (user_id TEXT PRIMARY KEY, username TEXT, keys_data TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, product TEXT, duration TEXT, amount INTEGER, key TEXT, date TEXT, payment_id TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS keys_pool (product TEXT, duration TEXT, key TEXT, added_date TEXT)''')
     c.execute('CREATE INDEX IF NOT EXISTS idx_keys ON keys_pool (product, duration)')
-    c.execute('''CREATE TABLE IF NOT EXISTS stats (
-        key TEXT PRIMARY KEY,
-        value INTEGER
-    )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS stats (key TEXT PRIMARY KEY, value INTEGER)''')
     c.execute("INSERT OR IGNORE INTO stats (key, value) VALUES ('total_orders', 0)")
     c.execute("INSERT OR IGNORE INTO stats (key, value) VALUES ('total_revenue', 0)")
     conn.commit()
@@ -83,10 +64,9 @@ def pop_key(product, duration):
     row = c.fetchone()
     if row:
         key = row[0]
-        c.execute("DELETE FROM keys_pool WHERE product=? AND duration=? AND key=? LIMIT 1", (product, duration, key))
+        c.execute("DELETE FROM keys_pool WHERE product=? AND duration=? AND key=?", (product, duration, key))
         conn.commit()
         conn.close()
-        print(f"[POP] {product} {duration} -> {key}")
         return key
     conn.close()
     return None
@@ -96,21 +76,16 @@ def add_keys_to_db(product, duration, key_list):
     c = conn.cursor()
     now = datetime.datetime.now().isoformat()
     for k in key_list:
-        c.execute("INSERT INTO keys_pool (product, duration, key, added_date) VALUES (?,?,?,?)",
-                  (product, duration, k, now))
+        c.execute("INSERT INTO keys_pool (product, duration, key, added_date) VALUES (?,?,?,?)", (product, duration, k, now))
     conn.commit()
     conn.close()
-    print(f"[ADD] {product} {duration} -> {len(key_list)} keys")
 
 def save_user_key(user_id, username, product_name, duration, key):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute("SELECT keys_data FROM users WHERE user_id=?", (str(user_id),))
     row = c.fetchone()
-    if row:
-        keys_list = json.loads(row[0])
-    else:
-        keys_list = []
+    keys_list = json.loads(row[0]) if row else []
     keys_list.append({
         "product": product_name,
         "duration": duration,
@@ -125,60 +100,11 @@ def save_user_key(user_id, username, product_name, duration, key):
 def save_order(order_data):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute("""INSERT INTO orders (username, product, duration, amount, key, date, payment_id)
-                 VALUES (?,?,?,?,?,?,?)""",
+    c.execute("INSERT INTO orders (username, product, duration, amount, key, date, payment_id) VALUES (?,?,?,?,?,?,?)",
               (order_data['username'], order_data['product'], order_data['duration'],
                order_data['amount'], order_data['key'], order_data['date'], order_data.get('payment_id', '')))
     c.execute("UPDATE stats SET value = value + 1 WHERE key = 'total_orders'")
     c.execute("UPDATE stats SET value = value + ? WHERE key = 'total_revenue'", (order_data['amount'],))
-    conn.commit()
-    conn.close()
-
-def get_stats():
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("SELECT value FROM stats WHERE key='total_orders'")
-    total_orders = c.fetchone()[0]
-    c.execute("SELECT value FROM stats WHERE key='total_revenue'")
-    total_revenue = c.fetchone()[0]
-    conn.close()
-    return {"total_orders": total_orders, "total_revenue": total_revenue}
-
-def get_all_keys():
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("SELECT product, duration, key FROM keys_pool")
-    rows = c.fetchall()
-    conn.close()
-    keys_dict = {p: {"day": [], "week": [], "month": []} for p in PRODUCTS}
-    for product, duration, key in rows:
-        if product in keys_dict:
-            keys_dict[product][duration].append(key)
-    return keys_dict
-
-def get_all_users():
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("SELECT user_id, username, keys_data FROM users")
-    rows = c.fetchall()
-    conn.close()
-    users = {}
-    for uid, uname, kdata in rows:
-        users[uid] = {"username": uname, "keys": json.loads(kdata) if kdata else []}
-    return users
-
-def get_all_orders():
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("SELECT username, product, duration, amount, key, date FROM orders ORDER BY id DESC")
-    rows = c.fetchall()
-    conn.close()
-    return [{"username": r[0], "product": r[1], "duration": r[2], "amount": r[3], "key": r[4], "date": r[5]} for r in rows]
-
-def clear_keys_pool(product, duration):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("DELETE FROM keys_pool WHERE product=? AND duration=?", (product, duration))
     conn.commit()
     conn.close()
 
@@ -274,12 +200,10 @@ def handle(call):
     elif data == "buy":
         bot.edit_message_text("🛒 *Select Product*", cid, call.message.id, parse_mode="Markdown", reply_markup=products_kb())
     elif data == "stock":
-        text = "📦 *Stock Available*\n\n"
+        text = "📦 *Stock*\n\n"
         for key, p in PRODUCTS.items():
-            d = get_stock(key, "day")
-            w = get_stock(key, "week")
-            m = get_stock(key, "month")
-            text += f"{p['emoji']} *{p['name']}* : 1D:{d} 7D:{w} 30D:{m}\n"
+            d,w,m = get_stock(key,"day"), get_stock(key,"week"), get_stock(key,"month")
+            text += f"{p['emoji']} {p['name']}: 1D:{d} 7D:{w} 30D:{m}\n"
         bot.edit_message_text(text, cid, call.message.id, parse_mode="Markdown", reply_markup=main_menu())
     elif data == "mykeys":
         conn = sqlite3.connect(DB_FILE)
@@ -311,18 +235,43 @@ def handle(call):
             return
         amount = PRICES[product][duration]
         order_id = f"R{int(time.time())}{random.randint(10,99)}"
+        
         pending_orders[order_id] = {
             "user_id": uid, "username": uname,
             "product": product, "duration": duration,
             "amount": amount, "chat_id": cid
         }
+        
+        # Create order in Upigateway (optional, for webhook reference)
+        app_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://reddy-bot.onrender.com')
+        try:
+            upi_response = requests.post(UPIGATEWAY_API_URL, json={
+                "amount": amount,
+                "client_txn_id": order_id,
+                "upi_id": UPI_ID,
+                "redirect_url": f"{app_url}/payment_success",
+                "customer_name": uname,
+                "customer_mobile": "9999999999",
+                "customer_email": f"{uid}@telegram.com",
+                "api_key": UPIGATEWAY_API_KEY
+            }, timeout=10)
+            print(f"Upigateway response: {upi_response.text}")
+        except Exception as e:
+            print(f"Upigateway create order error: {e}")
+        
+        # Generate QR code
         qr = make_qr(amount, order_id)
-        caption = f"💳 *UPI Payment*\n\nOrder: `{order_id}`\nProduct: {PRODUCTS[product]['name']}\nAmount: ₹{amount}\n\nUPI ID: `{UPI_ID}`\n\nScan QR code or pay to this UPI ID.\nAfter payment, key will be sent automatically."
-        bot.delete_message(cid, call.message.id)
+        caption = f"💳 *UPI Payment*\n\nOrder: `{order_id}`\nProduct: {PRODUCTS[product]['name']}\nAmount: ₹{amount}\n\nUPI ID: `{UPI_ID}`\n\nScan QR code to pay.\n**Payment will be detected automatically via webhook!**"
+        
         kb = InlineKeyboardMarkup()
         kb.add(InlineKeyboardButton("❌ Cancel", callback_data=f"cancel_{order_id}", style='danger'))
+        
+        bot.delete_message(cid, call.message.id)
         bot.send_photo(cid, qr, caption=caption, parse_mode="Markdown", reply_markup=kb)
+        
+        # Auto expire after 15 minutes
         threading.Timer(900, lambda: expire_order(order_id, cid)).start()
+        
     elif data.startswith("cancel_"):
         order_id = data.split("_")[1]
         if order_id in pending_orders:
@@ -337,39 +286,46 @@ def expire_order(order_id, cid):
         except:
             pass
 
-# ========== iOS SMS WEBHOOK (POST endpoint) ==========
-@app.route('/sms_webhook_ios', methods=['POST'])
-def sms_webhook_ios():
+# ========== UPIGATEWAY WEBHOOK ==========
+@app.route('/upigateway_webhook', methods=['POST'])
+def upigateway_webhook():
+    """
+    Receives payment confirmation from Upigateway
+    Format: JSON with fields: client_txn_id, status, amount, etc.
+    """
     try:
+        # Try to get JSON data first
         data = request.get_json()
         if not data:
-            return jsonify({"error": "Invalid JSON"}), 400
-        if data.get('secret') != SMS_WEBHOOK_SECRET:
-            return jsonify({"error": "Unauthorized"}), 401
-        sms_text = data.get('sms_body', '')
-        print(f"[DEBUG] iOS webhook received: {sms_text}")
-        # Extract amount from SMS (supports ₹149, Rs 149, INR149, 149)
-        match = re.search(r'[\₹RsINR]*\s*(\d{2,4})', sms_text, re.IGNORECASE)
-        amount = int(match.group(1)) if match else 0
-        if amount == 0:
-            return jsonify({"error": "Could not extract amount"}), 400
-        # Find pending order with matching amount
-        matched = None
-        for oid, order in pending_orders.items():
-            if order['amount'] == amount:
-                matched = oid
-                break
-        if not matched:
-            return jsonify({"error": f"No pending order for amount {amount}"}), 404
-        order = pending_orders[matched]
+            # Fallback to form data
+            data = request.form.to_dict()
+        
+        print(f"Upigateway webhook received: {data}")
+        
+        order_id = data.get('client_txn_id')
+        status = data.get('status')
+        amount = data.get('amount')
+        
+        if not order_id or status != 'success':
+            return jsonify({"error": "Invalid data"}), 400
+        
+        # Find pending order
+        if order_id not in pending_orders:
+            print(f"Order {order_id} not found in pending orders")
+            return jsonify({"error": "Order not found"}), 404
+        
+        order = pending_orders[order_id]
+        
+        # Verify amount matches
+        if int(amount) != order['amount']:
+            return jsonify({"error": "Amount mismatch"}), 400
+        
+        # Deliver key
         key = pop_key(order['product'], order['duration'])
         if not key:
             key = generate_key(PREFIX.get(order['product'], "KEY"))
-        # Deliver key to user
-        bot.send_message(order['chat_id'],
-                         f"✅ *Payment Verified!*\n\n🔑 Your Key: `{key}`\n\nThank you!",
-                         parse_mode="Markdown")
-        # Save order to database
+        
+        save_user_key(order['user_id'], order['username'], PRODUCTS[order['product']]['name'], order['duration'], key)
         save_order({
             "username": order['username'],
             "product": PRODUCTS[order['product']]['name'],
@@ -377,18 +333,31 @@ def sms_webhook_ios():
             "amount": order['amount'],
             "key": key,
             "date": datetime.datetime.now().strftime("%d %b %Y %I:%M %p"),
-            "payment_id": "ios_webhook"
+            "payment_id": data.get('id', 'upigateway')
         })
-        del pending_orders[matched]
-        return jsonify({"status": "key_delivered", "order_id": matched})
+        
+        # Send key to user
+        bot.send_message(order['chat_id'], 
+                         f"✅ *Payment Verified!*\n\n🔑 Your Key: `{key}`\n\nThank you!",
+                         parse_mode="Markdown")
+        
+        # Clean up
+        del pending_orders[order_id]
+        
+        return jsonify({"status": "success"}), 200
+        
     except Exception as e:
-        print(f"Error in /sms_webhook_ios: {e}")
+        print(f"Webhook error: {e}")
         return jsonify({"error": str(e)}), 500
+
+@app.route('/payment_success', methods=['GET'])
+def payment_success():
+    return send_from_directory('.', 'success.html')
 
 # ========== ADMIN PANEL API ROUTES ==========
 @app.route('/')
 def home():
-    return jsonify({"status": "online", "storage": "sqlite"})
+    return jsonify({"status": "online", "gateway": "upigateway"})
 
 @app.route('/admin')
 def admin():
@@ -396,19 +365,34 @@ def admin():
 
 @app.route('/api/dashboard')
 def dashboard():
-    stats = get_stats()
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT value FROM stats WHERE key='total_orders'")
+    total_orders = c.fetchone()[0]
+    c.execute("SELECT value FROM stats WHERE key='total_revenue'")
+    total_revenue = c.fetchone()[0]
+    conn.close()
     total_keys = sum(get_stock(p, "day") + get_stock(p, "week") + get_stock(p, "month") for p in PRODUCTS)
-    total_users = len(get_all_users())
+    total_users = len([1 for _ in sqlite3.connect(DB_FILE).cursor().execute("SELECT user_id FROM users")])
     return jsonify({
         "total_keys": total_keys,
-        "total_orders": stats["total_orders"],
+        "total_orders": total_orders,
         "total_users": total_users,
-        "total_revenue": stats["total_revenue"]
+        "total_revenue": total_revenue
     })
 
 @app.route('/api/keys/all')
 def keys_all():
-    return jsonify(get_all_keys())
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT product, duration, key FROM keys_pool")
+    rows = c.fetchall()
+    conn.close()
+    keys_dict = {p: {"day": [], "week": [], "month": []} for p in PRODUCTS}
+    for product, duration, key in rows:
+        if product in keys_dict:
+            keys_dict[product][duration].append(key)
+    return jsonify(keys_dict)
 
 @app.route('/api/keys/<product>/<duration>')
 def get_keys(product, duration):
@@ -441,7 +425,11 @@ def gen_keys():
 
 @app.route('/api/keys/<product>/<duration>', methods=['DELETE'])
 def clear_keys(product, duration):
-    clear_keys_pool(product, duration)
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("DELETE FROM keys_pool WHERE product=? AND duration=?", (product, duration))
+    conn.commit()
+    conn.close()
     return jsonify({"ok": True})
 
 @app.route('/api/prices')
@@ -456,7 +444,13 @@ def set_prices():
 
 @app.route('/api/orders')
 def get_orders():
-    return jsonify(get_all_orders())
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT username, product, duration, amount, key, date FROM orders ORDER BY id DESC")
+    rows = c.fetchall()
+    conn.close()
+    orders = [{"username": r[0], "product": r[1], "duration": r[2], "amount": r[3], "key": r[4], "date": r[5]} for r in rows]
+    return jsonify(orders)
 
 @app.route('/api/orders', methods=['DELETE'])
 def del_orders():
@@ -471,7 +465,15 @@ def del_orders():
 
 @app.route('/api/users')
 def get_users():
-    return jsonify(get_all_users())
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT user_id, username, keys_data FROM users")
+    rows = c.fetchall()
+    conn.close()
+    users = {}
+    for uid, uname, kdata in rows:
+        users[uid] = {"username": uname, "keys": json.loads(kdata) if kdata else []}
+    return jsonify(users)
 
 @app.route('/api/auth', methods=['POST'])
 def auth():
@@ -488,7 +490,7 @@ def webhook():
 
 # ========== MAIN ==========
 if __name__ == "__main__":
-    print("Starting Reddy Premium Bot with SQLite + iOS webhook...")
+    print("Starting Reddy Premium Bot with Upigateway...")
     bot.remove_webhook()
     url = os.environ.get('RENDER_EXTERNAL_URL', 'https://reddy-bot.onrender.com')
     bot.set_webhook(f"{url}/webhook")
